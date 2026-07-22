@@ -1,0 +1,23 @@
+{
+  "name": "todoist-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Purpose-built local-stdio MCP server for a personal Todoist (GTD) account, with an env-gated read-only mode, a controlled tool surface, and in-server injection mitigations.",
+  "type": "module",
+  "bin": {
+    "todoist-mcp": "./src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test test/",
+    "smoke": "node scripts/live-smoke.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "zod": "^3.25.76"
+  },
+  "license": "UNLICENSED"
+}
