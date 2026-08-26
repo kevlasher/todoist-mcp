@@ -19,24 +19,68 @@
 export const FRAME_OPEN = '‹UNTRUSTED›'; // ‹UNTRUSTED›
 export const FRAME_CLOSE = '‹/UNTRUSTED›'; // ‹/UNTRUSTED›
 
-/** Strip HTML tags and comments, and neutralize markdown control syntax. */
-export function stripMarkup(input) {
-  let text = typeof input === 'string' ? input : String(input ?? '');
-
-  // Remove HTML comments and tags outright.
-  text = text.replace(/<!--[\s\S]*?-->/g, '');
-  text = text.replace(/<\/?[a-zA-Z][^>]*>/g, '');
-
-  // Decode a few common HTML entities so escaped markup can't sneak through,
-  // then re-neutralize any angle brackets that remain.
-  text = text
+/**
+ * Decode HTML entities — numeric (decimal and hex) first, then the common
+ * named ones — in a single pass. Numeric entities must be decoded before
+ * both the tag-stripping pass and URL neutralization below: otherwise an
+ * entity-encoded tag or URL scheme (e.g. `&#60;script&#62;`, `http&#58;//`)
+ * survives as inert-looking text that a downstream renderer could still
+ * decode into a live tag or link.
+ */
+function decodeHtmlEntities(text) {
+  return text
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&amp;/gi, '&')
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'");
+    .replace(/&apos;/gi, "'");
+}
+
+/**
+ * Defang a matched URL in place: break the scheme (http -> hxxp, https ->
+ * hxxps) and every dot (. -> [.]) so the text can neither autolink nor be
+ * re-parsed back into a live URL, while staying human-readable enough for a
+ * person to reconstruct it by hand. Dots are broken everywhere in the match,
+ * not just in the host, because breaking only the scheme leaves a bare
+ * `www.host.tld` that some clients autolink without a scheme at all. Every
+ * occurrence of "http" in the match is defanged, not just a leading one, so
+ * a scheme smuggled inside a query string or path (e.g.
+ * `?next=https://host`) can't survive as a second, live URL.
+ */
+function defangUrl(url) {
+  return url.replace(/http/gi, 'hxxp').replace(/\./g, '[.]');
+}
+
+/** Strip HTML tags and comments, and neutralize markdown control syntax. */
+export function stripMarkup(input) {
+  let text = typeof input === 'string' ? input : String(input ?? '');
+
+  // Remove HTML comments and any literal (non-entity-encoded) tags outright.
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+  text = text.replace(/<\/?[a-zA-Z][^>]*>/g, '');
+
+  // Decode entities, then re-strip tags a second time so an entity-encoded
+  // tag can't survive, then neutralize any angle brackets still left over.
+  text = decodeHtmlEntities(text);
   text = text.replace(/<\/?[a-zA-Z][^>]*>/g, ''); // second pass after decode
   text = text.replace(/[<>]/g, ' ');
+
+  // Reassemble a URL scheme run that was split by a single soft line break
+  // (as opposed to a blank-line paragraph break), so a downstream renderer
+  // that collapses soft wraps can't reconstruct a URL we failed to catch.
+  text = text.replace(
+    /(https?:\/\/[^\s]*)[ \t]*\r?\n(?!\r?\n)[ \t]*([^\s]*)/gi,
+    '$1$2'
+  );
+
+  // Defang any URL-shaped sequence, regardless of what markup (or lack of
+  // it) surrounds it — bare text, a reference-style definition line, an
+  // entity-decoded scheme, etc. This targets the outcome (no re-parseable
+  // or autolinkable URL survives) rather than enumerating carrier syntaxes,
+  // and applies uniformly to every host — no allowlist, no exemptions.
+  text = text.replace(/\bhttps?:\/\/[^\s<>()[\]"']+/gi, defangUrl);
 
   // Neutralize markdown link / image syntax: keep the visible label, drop the
   // target so no clickable/again-parseable URL survives.
