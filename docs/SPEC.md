@@ -140,6 +140,19 @@ support:
   tracked as separate work outside this repository, in the Agent OS
   project's agent definitions.
 
+### AD-2 — URLs in tool output are defanged, not removed
+
+**Decision:**
+
+- URLs in tool output are defanged rather than removed, so a person can
+  still read and manually reconstruct a link they saved. Defanging applies
+  to all hosts equally; a `todoist.com` allowlist was considered and
+  rejected, because any host exemption is a permanent maintenance
+  obligation on a security control, and because defanging preserves the
+  information the exemption was meant to protect.
+- The `url` structural field in `shape.js` is a raw passthrough and was
+  never affected by URL removal, contrary to an initial assumption.
+
 ## 5. Invariants
 
 Each invariant below is a statement that should be mechanically checkable
@@ -152,7 +165,7 @@ inventory as of this writing.
 | 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **HOLDS** | Behavior inventory §4–5, §8; review "Also checked" §3 |
 | 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'` |
 | 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
-| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **VIOLATED** | Review Finding 4 — reference-style markdown links (`[x][1]` / `[1]: url`) and bare URLs pass through `stripMarkup` unmodified; the current implementation enumerates syntaxes to defang rather than guaranteeing the outcome, which is exactly what let this case through |
+| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **HOLDS** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption |
 | 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **PARTIALLY VIOLATED** | Review Finding 5 — the initial URL is checked, but `fetch()` follows redirects with no re-check of the `Location` target |
 | 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** | Behavior inventory §1, §7; `test/registration.test.js` |
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
@@ -372,6 +385,16 @@ Post-Session-5, measured the same way:
 | | Lines | Branches | Functions |
 |---|---|---|---|
 | All files | 87.28% | 84.58% | 83.58% |
+
+Post-Session-6, measured the same way:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 89.39% | 86.36% | 85.81% |
+
+`src/sanitize.js` branch coverage moved from 87.50% to 83.33%: `defangUrl`
+added branches not all of which are exercised, specifically a URL match
+containing no dots.
 
 `src/tools/write.js` function coverage is now **38.46%**, up from the
 14.29% recorded baseline.
