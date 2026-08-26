@@ -21,10 +21,8 @@
  *   add-labels       POST /labels
  */
 import { z } from 'zod';
-
-function writeResult(payload) {
-  return { content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }] };
-}
+import { safeField } from '../sanitize.js';
+import { buildResult } from '../result.js';
 
 const priority = z
   .number()
@@ -41,10 +39,7 @@ export function registerWriteTools(server, client, cfg) {
       try {
         return await handler(args ?? {});
       } catch (err) {
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Error: ${err.message}` }],
-        };
+        return buildResult(cfg, { error: err });
       }
     });
     registered.push(name);
@@ -83,9 +78,13 @@ export function registerWriteTools(server, client, cfg) {
       const results = [];
       for (const t of a.tasks) {
         const created = await client.request('POST', '/tasks', { body: t });
-        results.push({ id: created?.id, content: created?.content, url: created?.url });
+        results.push({
+          id: created?.id,
+          content: safeField(created?.content, cfg.maxFieldChars),
+          url: created?.url,
+        });
       }
-      return writeResult({ created: results.length, tasks: results });
+      return buildResult(cfg, { payload: { created: results.length, tasks: results } });
     }
   );
 
@@ -121,9 +120,9 @@ export function registerWriteTools(server, client, cfg) {
         const updated = await client.request('POST', `/tasks/${encodeURIComponent(id)}`, {
           body,
         });
-        results.push({ id, ok: true, content: updated?.content });
+        results.push({ id, ok: true, content: safeField(updated?.content, cfg.maxFieldChars) });
       }
-      return writeResult({ updated: results.length, tasks: results });
+      return buildResult(cfg, { payload: { updated: results.length, tasks: results } });
     }
   );
 
@@ -139,7 +138,7 @@ export function registerWriteTools(server, client, cfg) {
       for (const id of a.ids) {
         await client.request('POST', `/tasks/${encodeURIComponent(id)}/close`);
       }
-      return writeResult({ completed: a.ids.length, ids: a.ids });
+      return buildResult(cfg, { payload: { completed: a.ids.length, ids: a.ids } });
     }
   );
 
@@ -155,7 +154,7 @@ export function registerWriteTools(server, client, cfg) {
       for (const id of a.ids) {
         await client.request('POST', `/tasks/${encodeURIComponent(id)}/reopen`);
       }
-      return writeResult({ reopened: a.ids.length, ids: a.ids });
+      return buildResult(cfg, { payload: { reopened: a.ids.length, ids: a.ids } });
     }
   );
 
@@ -191,7 +190,7 @@ export function registerWriteTools(server, client, cfg) {
         await client.request('POST', `/tasks/${encodeURIComponent(id)}`, { body: due });
         results.push({ id, ok: true });
       }
-      return writeResult({ rescheduled: results.length, tasks: results });
+      return buildResult(cfg, { payload: { rescheduled: results.length, tasks: results } });
     }
   );
 
@@ -227,7 +226,7 @@ export function registerWriteTools(server, client, cfg) {
         const created = await client.request('POST', '/comments', { body: c });
         results.push({ id: created?.id });
       }
-      return writeResult({ added: results.length, comments: results });
+      return buildResult(cfg, { payload: { added: results.length, comments: results } });
     }
   );
 
@@ -255,9 +254,9 @@ export function registerWriteTools(server, client, cfg) {
       const results = [];
       for (const p of a.projects) {
         const created = await client.request('POST', '/projects', { body: p });
-        results.push({ id: created?.id, name: created?.name });
+        results.push({ id: created?.id, name: safeField(created?.name, cfg.maxFieldChars) });
       }
-      return writeResult({ created: results.length, projects: results });
+      return buildResult(cfg, { payload: { created: results.length, projects: results } });
     }
   );
 
@@ -284,9 +283,9 @@ export function registerWriteTools(server, client, cfg) {
       const results = [];
       for (const s of a.sections) {
         const created = await client.request('POST', '/sections', { body: s });
-        results.push({ id: created?.id, name: created?.name });
+        results.push({ id: created?.id, name: safeField(created?.name, cfg.maxFieldChars) });
       }
-      return writeResult({ created: results.length, sections: results });
+      return buildResult(cfg, { payload: { created: results.length, sections: results } });
     }
   );
 
@@ -313,9 +312,9 @@ export function registerWriteTools(server, client, cfg) {
       const results = [];
       for (const l of a.labels) {
         const created = await client.request('POST', '/labels', { body: l });
-        results.push({ id: created?.id, name: created?.name });
+        results.push({ id: created?.id, name: safeField(created?.name, cfg.maxFieldChars) });
       }
-      return writeResult({ created: results.length, labels: results });
+      return buildResult(cfg, { payload: { created: results.length, labels: results } });
     }
   );
 

@@ -11,7 +11,6 @@
  *   get-overview       GET /projects + GET /sections + GET /tasks (aggregated)
  */
 import { z } from 'zod';
-import { capOutput, UNTRUSTED_NOTICE } from '../sanitize.js';
 import {
   shapeTask,
   shapeProject,
@@ -19,12 +18,7 @@ import {
   shapeLabel,
   shapeComment,
 } from '../shape.js';
-
-/** Build a read tool's text result: fencing notice + size-capped JSON. */
-function readResult(payload, cfg) {
-  const body = capOutput(payload, cfg.maxOutputChars);
-  return { content: [{ type: 'text', text: `${UNTRUSTED_NOTICE}\n\n${body}` }] };
-}
+import { buildResult } from '../result.js';
 
 export function registerReadTools(server, client, cfg) {
   const registered = [];
@@ -33,12 +27,9 @@ export function registerReadTools(server, client, cfg) {
       try {
         return await handler(args ?? {});
       } catch (err) {
-        // Error message is already redacted at the client layer; belt-and-
-        // suspenders redaction also runs in the logger.
-        return {
-          isError: true,
-          content: [{ type: 'text', text: `Error: ${err.message}` }],
-        };
+        // Error message is already redacted at the client layer; buildResult
+        // applies a belt-and-suspenders redaction pass regardless.
+        return buildResult(cfg, { error: err });
       }
     });
     registered.push(name);
@@ -88,10 +79,9 @@ export function registerReadTools(server, client, cfg) {
           cap
         ));
       }
-      return readResult(
-        { count: items.length, truncated, tasks: items.map((t) => shapeTask(t, cfg)) },
-        cfg
-      );
+      return buildResult(cfg, {
+        payload: { count: items.length, truncated, tasks: items.map((t) => shapeTask(t, cfg)) },
+      });
     }
   );
 
@@ -140,15 +130,14 @@ export function registerReadTools(server, client, cfg) {
         { query, lang: 'en' },
         a.limit ?? cfg.maxItems
       );
-      return readResult(
-        {
+      return buildResult(cfg, {
+        payload: {
           filter: query,
           count: items.length,
           truncated,
           tasks: items.map((t) => shapeTask(t, cfg)),
         },
-        cfg
-      );
+      });
     }
   );
 
@@ -166,14 +155,13 @@ export function registerReadTools(server, client, cfg) {
         {},
         a.limit ?? cfg.maxItems
       );
-      return readResult(
-        {
+      return buildResult(cfg, {
+        payload: {
           count: items.length,
           truncated,
           projects: items.map((p) => shapeProject(p, cfg)),
         },
-        cfg
-      );
+      });
     }
   );
 
@@ -195,14 +183,13 @@ export function registerReadTools(server, client, cfg) {
         { project_id: a.project_id },
         a.limit ?? cfg.maxItems
       );
-      return readResult(
-        {
+      return buildResult(cfg, {
+        payload: {
           count: items.length,
           truncated,
           sections: items.map((s) => shapeSection(s, cfg)),
         },
-        cfg
-      );
+      });
     }
   );
 
@@ -220,10 +207,9 @@ export function registerReadTools(server, client, cfg) {
         {},
         a.limit ?? cfg.maxItems
       );
-      return readResult(
-        { count: items.length, truncated, labels: items.map((l) => shapeLabel(l, cfg)) },
-        cfg
-      );
+      return buildResult(cfg, {
+        payload: { count: items.length, truncated, labels: items.map((l) => shapeLabel(l, cfg)) },
+      });
     }
   );
 
@@ -253,14 +239,13 @@ export function registerReadTools(server, client, cfg) {
         { task_id: a.task_id, project_id: a.project_id },
         a.limit ?? cfg.maxItems
       );
-      return readResult(
-        {
+      return buildResult(cfg, {
+        payload: {
           count: items.length,
           truncated,
           comments: items.map((c) => shapeComment(c, cfg)),
         },
-        cfg
-      );
+      });
     }
   );
 
@@ -314,8 +299,8 @@ export function registerReadTools(server, client, cfg) {
         };
       });
 
-      return readResult(
-        {
+      return buildResult(cfg, {
+        payload: {
           totals: {
             projects: projRes.items.length,
             active_tasks: taskRes.items.length,
@@ -327,8 +312,7 @@ export function registerReadTools(server, client, cfg) {
           projects,
           note: 'Counts reflect up to the configured item cap; large accounts may be truncated.',
         },
-        cfg
-      );
+      });
     }
   );
 

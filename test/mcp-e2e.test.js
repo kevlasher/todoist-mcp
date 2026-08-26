@@ -4,7 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../src/server.js';
 import { registerSecret } from '../src/redact.js';
-import { FRAME_OPEN, FRAME_CLOSE } from '../src/sanitize.js';
+import { FRAME_OPEN, FRAME_CLOSE, safeField } from '../src/sanitize.js';
 
 const TOKEN = 'e2e-secret-token-do-not-leak-123456';
 
@@ -90,6 +90,109 @@ test('read tool output is framed and strips markup; token never leaks', async ()
     assert.ok(!text.includes('**'), 'markdown emphasis should be stripped');
     assert.ok(text.includes('Groceries'), 'visible text should survive');
     assert.ok(!text.includes(TOKEN), 'token must never appear in tool output');
+    await client.close();
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test('write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)', async () => {
+  // update-tasks body omits `content` entirely — the echoed content below comes
+  // solely from the (mocked) Todoist API response, not from anything the
+  // caller supplied in this call.
+  const testCfg = cfg({ readOnly: false, maxFieldChars: 2000 });
+  const injectedContent =
+    '<b>Bold</b> [Click here](http://evil.example.com/steal) visit http://bare.example.com/x ' +
+    'A'.repeat(3000); // long enough to exceed maxFieldChars and force truncation.
+  // The ground truth for "what a read tool would do" is the shared framing
+  // helper itself, not a hand-picked substring guess.
+  const expectedFramed = safeField(injectedContent, testCfg.maxFieldChars);
+
+  const orig = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ id: '999', content: injectedContent }),
+  });
+  try {
+    const client = await connect(testCfg);
+    const res = await client.callTool({
+      name: 'update-tasks',
+      arguments: { tasks: [{ id: '999' }] },
+    });
+    const text = res.content.map((c) => c.text).join('\n');
+
+    assert.ok(
+      text.includes(FRAME_OPEN) && text.includes(FRAME_CLOSE),
+      'echoed content should be framed like a read tool\'s output'
+    );
+    assert.ok(!text.includes('<b>'), 'HTML should be stripped');
+    assert.ok(
+      !text.includes('http://evil.example.com/steal'),
+      'markdown link target should be stripped'
+    );
+    assert.ok(text.includes('Click here'), 'markdown link label should survive');
+    assert.ok(
+      text.includes(expectedFramed),
+      'echoed content must match exactly what safeField (the read-tool framing path) would produce'
+    );
+    await client.close();
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test('a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool', async () => {
+  const SECRET = 'plain-error-secret-read-111111';
+  registerSecret(SECRET);
+  const orig = globalThis.fetch;
+  // res.ok === true takes the un-try/catch-guarded `await res.text()` path in
+  // client.js — throwing here yields a plain Error, not a TodoistApiError.
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => {
+      throw new Error(`unexpected parse failure while holding token ${SECRET}`);
+    },
+  });
+  try {
+    const client = await connect(cfg({ readOnly: true }));
+    const res = await client.callTool({ name: 'find-projects', arguments: {} });
+    const text = res.content.map((c) => c.text).join('\n');
+    assert.ok(res.isError, 'a thrown Error should surface as an isError tool result');
+    assert.ok(
+      !text.includes(SECRET),
+      'secret must never appear in a tool result, even for an unredacted plain Error'
+    );
+    await client.close();
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test('a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — write tool', async () => {
+  const SECRET = 'plain-error-secret-write-222222';
+  registerSecret(SECRET);
+  const orig = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => {
+      throw new Error(`unexpected parse failure while holding token ${SECRET}`);
+    },
+  });
+  try {
+    const client = await connect(cfg({ readOnly: false }));
+    const res = await client.callTool({
+      name: 'add-tasks',
+      arguments: { tasks: [{ content: 'Buy milk' }] },
+    });
+    const text = res.content.map((c) => c.text).join('\n');
+    assert.ok(res.isError, 'a thrown Error should surface as an isError tool result');
+    assert.ok(
+      !text.includes(SECRET),
+      'secret must never appear in a tool result, even for an unredacted plain Error'
+    );
     await client.close();
   } finally {
     globalThis.fetch = orig;
