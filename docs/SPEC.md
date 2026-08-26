@@ -150,17 +150,17 @@ inventory as of this writing.
 | # | Invariant | Status | Citation |
 |---|---|---|---|
 | 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **HOLDS** | Behavior inventory §4–5, §8; review "Also checked" §3 |
-| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **VIOLATED** | Review Finding 1 — `write.js` never imports `sanitize.js` or `shape.js`; `writeResult` is raw `JSON.stringify`. (This is one observable consequence of Invariant 12 below.) |
-| 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **VIOLATED** | Review Finding 3 — both `read.js` and `write.js` catch blocks emit `err.message` directly, unredacted, relying on unenforced upstream discipline. (This is the other observable consequence of Invariant 12 below.) |
+| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'` |
+| 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
 | 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **VIOLATED** | Review Finding 4 — reference-style markdown links (`[x][1]` / `[1]: url`) and bare URLs pass through `stripMarkup` unmodified; the current implementation enumerates syntaxes to defang rather than guaranteeing the outcome, which is exactly what let this case through |
 | 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **PARTIALLY VIOLATED** | Review Finding 5 — the initial URL is checked, but `fetch()` follows redirects with no re-check of the `Location` target |
 | 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** | Behavior inventory §1, §7; `test/registration.test.js` |
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
 | 8 | The server exposes write tools if and only if it was started with `TODOIST_READONLY` set to exactly `"false"`; this is decided once at startup, before any Todoist content is read, by not registering those tools at all, and cannot be changed for the lifetime of the running process. | **HOLDS** | `test/registration.test.js` — `'read-only mode registers only the 7 read tools, no writes'`, `'read/write mode registers the full 16-tool set'`; behavior inventory §1, §7. (Per-request mode selection and human confirmation are out of scope for this invariant — see AD-1.) |
 | 9 | No log line emitted by `src/logger.js` contains the raw, unredacted API token. | **HOLDS** | Behavior inventory §2–3, §6 (tested); review "Also checked" §3 — logger redacts every line, `client.js` never logs headers/bodies |
-| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **VIOLATED** | Review Finding 3 — errors originating outside `client.js` (e.g. a handler-level throw, or a future bug that references `cfg.apiKey` directly) reach the `isError` response with no redaction pass; today's absence of a known leak is an accident of what errors happen to be thrown, not something enforced |
+| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path) |
 | 11 | `API_BASE` / outbound hostname is a fixed literal, never derived from any tool input. | **HOLDS** | Behavior inventory §6; review Finding 5 discussion ("the host is hardcoded... never derived from any tool argument") |
-| 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **VIOLATED** | Review Findings 1 and 3 — `write.js` builds every result and every error response via its own ad hoc object literals (`writeResult`, and the inline catch-block `{isError, content}` shape), a separate path from the read-tool builder that applies framing, stripping, and redaction. This is the structural, mechanically checkable fact — a static test can grep for result-shaped object literals outside the one designated builder function — of which Invariants 2 and 3 are each one observable symptom. |
+| 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **HOLDS** | `test/result-builder-shape.test.js` — `'Invariant 12: a tool result object is constructed in exactly one place in src/, never ad hoc per tool'`. The check is by object shape (any `{ content: [{ type: 'text', ... }] }`-shaped literal outside the one designated builder function), not by function name. Verified by deliberately introducing a violating tool and confirming the test caught it at the exact line. |
 
 ## 6. Tool Surface
 
@@ -360,12 +360,21 @@ called out for your judgment rather than silently kept or dropped.
 
 ## 8. Coverage Baseline
 
-Measured this session with `node --test --experimental-test-coverage test/`
-on Node v20.20.2:
+Original baseline, measured with `node --test --experimental-test-coverage
+test/` on Node v20.20.2:
 
 | | Lines | Branches | Functions |
 |---|---|---|---|
 | All files | 83.43% | 83.16% | 77.97% |
+
+Post-Session-5, measured the same way:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 87.28% | 84.58% | 83.58% |
+
+`src/tools/write.js` function coverage is now **38.46%**, up from the
+14.29% recorded baseline.
 
 Notes:
 
@@ -379,6 +388,6 @@ Notes:
   friends) requires Node 22.8+ and is therefore **not yet in place** on
   this project's Node 20 runtime. Coverage is currently a measured
   baseline, not a gate.
-- The specific number to watch: `src/tools/write.js` is at **14.29%
-  function coverage**, the lowest of any file in `src/`. Any change to
-  that file should raise, not lower, this figure.
+- The specific number to watch: `src/tools/write.js` was at **14.29%
+  function coverage** in the original baseline, the lowest of any file in
+  `src/`. Any change to that file should raise, not lower, this figure.

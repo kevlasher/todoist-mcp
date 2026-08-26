@@ -96,6 +96,37 @@ test('read tool output is framed and strips markup; token never leaks', async ()
   }
 });
 
+test('a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)', async () => {
+  const SECRET = 'success-path-secret-333333';
+  registerSecret(SECRET);
+  const orig = globalThis.fetch;
+  // A successful response: the secret shows up inside ordinary task content,
+  // not in any error path. This exercises buildResult's success branch,
+  // which must redact() the whole body, not just error text.
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () =>
+      JSON.stringify({
+        results: [{ id: '1', content: `Rotate the API key ${SECRET} before Friday` }],
+        next_cursor: null,
+      }),
+  });
+  try {
+    const client = await connect(cfg({ readOnly: true }));
+    const res = await client.callTool({ name: 'find-tasks', arguments: {} });
+    const text = res.content.map((c) => c.text).join('\n');
+    assert.ok(!res.isError, 'this is a successful result, not an error result');
+    assert.ok(
+      !text.includes(SECRET),
+      'secret must never appear in a successful tool result, even embedded in ordinary content'
+    );
+    await client.close();
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
 test('write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)', async () => {
   // update-tasks body omits `content` entirely — the echoed content below comes
   // solely from the (mocked) Todoist API response, not from anything the
