@@ -91,7 +91,8 @@ support:
   that pauses a write for human confirmation. A single agent process, if
   configured with `TODOIST_READONLY=false`, can execute a write the instant
   the model emits the tool call. Any writeup claiming a confirmation gate
-  exists is false until one is built.
+  exists is false until one is built. See AD-1 for why this is not this
+  codebase's job to build, and what would actually implement it.
 - **No verification that a write actually achieved its intended effect**
   beyond receiving a non-error HTTP status. Tools report `ok: true` on any
   non-throwing response; they do not diff the API's returned state against
@@ -102,7 +103,44 @@ support:
   mutated on Todoist's side, with no compensating action and no report of
   which items succeeded.
 
-## 4. Invariants
+## 4. Architecture Decisions
+
+### AD-1 — Per-request mode selection is not this codebase's responsibility
+
+**Facts, established by direct inspection of the running configuration:**
+
+- The agent definition at
+  `/workspace/projects/agent-os/.claude/agents/todoist.md` launches this
+  server with `TODOIST_READONLY: "false"` in its frontmatter `env` block.
+  Mode is therefore fixed per agent definition, not per request.
+- Nothing in this codebase, and nothing in the invoking layer as currently
+  configured, selects mode based on the content of the user's request. This
+  server correctly enforces whichever mode it is started in and has no
+  mechanism to change that mode at runtime.
+- The intended design is that read-only is the default and write mode is
+  used only when the user's own typed request actually calls for a change.
+  That intent is not implemented anywhere today.
+- The smallest change that would implement it is two agent definitions —
+  one read-only, one write-capable — with routing that picks between them
+  based on the request. That routing is configuration in the Agent OS
+  project, not code in this repository.
+
+**Decision:**
+
+- No human confirmation gate exists in this codebase, and none is planned
+  as code here. A stdio MCP server has no mechanism to pause mid-call for
+  human input — it responds to a tool call and returns; there is no
+  built-in channel for it to block and wait on a person. Whatever
+  confirmation semantics are wanted have to live above this process, in
+  whatever invokes it.
+- Per-request mode selection (read-only unless the request calls for a
+  write) is the responsibility of the invoking agent layer, not of this
+  server. This server's job stops at correctly enforcing whatever mode it
+  was started in (see Invariant 8). Building the routing described above is
+  tracked as separate work outside this repository, in the Agent OS
+  project's agent definitions.
+
+## 5. Invariants
 
 Each invariant below is a statement that should be mechanically checkable
 against the whole codebase (e.g. "no file matching X imports/does Y"), not
@@ -118,13 +156,13 @@ inventory as of this writing.
 | 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **PARTIALLY VIOLATED** | Review Finding 5 — the initial URL is checked, but `fetch()` follows redirects with no re-check of the `Location` target |
 | 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** | Behavior inventory §1, §7; `test/registration.test.js` |
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
-| 8 | A write action requires explicit human confirmation before executing, mediated by a second, read-only-by-default agent. | **VIOLATED** | Review Finding 2 — only one agent exists, is write-enabled by its own checked-in config, and no code pauses execution for confirmation |
+| 8 | The server exposes write tools if and only if it was started with `TODOIST_READONLY` set to exactly `"false"`; this is decided once at startup, before any Todoist content is read, by not registering those tools at all, and cannot be changed for the lifetime of the running process. | **HOLDS** | `test/registration.test.js` — `'read-only mode registers only the 7 read tools, no writes'`, `'read/write mode registers the full 16-tool set'`; behavior inventory §1, §7. (Per-request mode selection and human confirmation are out of scope for this invariant — see AD-1.) |
 | 9 | No log line emitted by `src/logger.js` contains the raw, unredacted API token. | **HOLDS** | Behavior inventory §2–3, §6 (tested); review "Also checked" §3 — logger redacts every line, `client.js` never logs headers/bodies |
 | 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **VIOLATED** | Review Finding 3 — errors originating outside `client.js` (e.g. a handler-level throw, or a future bug that references `cfg.apiKey` directly) reach the `isError` response with no redaction pass; today's absence of a known leak is an accident of what errors happen to be thrown, not something enforced |
 | 11 | `API_BASE` / outbound hostname is a fixed literal, never derived from any tool input. | **HOLDS** | Behavior inventory §6; review Finding 5 discussion ("the host is hardcoded... never derived from any tool argument") |
 | 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **VIOLATED** | Review Findings 1 and 3 — `write.js` builds every result and every error response via its own ad hoc object literals (`writeResult`, and the inline catch-block `{isError, content}` shape), a separate path from the read-tool builder that applies framing, stripping, and redaction. This is the structural, mechanically checkable fact — a static test can grep for result-shaped object literals outside the one designated builder function — of which Invariants 2 and 3 are each one observable symptom. |
 
-## 5. Tool Surface
+## 6. Tool Surface
 
 All sixteen tools. "Echoed" lists fields in the tool's response that
 originate from a Todoist API response body (as opposed to fields the tool
@@ -156,7 +194,7 @@ The ❌ column is the injection surface Finding 1 identifies as critical,
 worst on `update-tasks` because that echoed `content` need not be anything
 the caller wrote in the same call.
 
-## 6. Behavioral Requirements
+## 7. Behavioral Requirements
 
 Restated from the behavior inventory as requirements to preserve. Items
 flagged **[DECISION NEEDED]** look accidental rather than intended and are
