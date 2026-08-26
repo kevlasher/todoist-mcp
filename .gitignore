@@ -6,3 +6,4 @@ node_modules/
 # never commit a real credential
 *.token
 secrets/
+.claude/settings.local.json

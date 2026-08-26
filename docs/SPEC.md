@@ -357,3 +357,28 @@ called out for your judgment rather than silently kept or dropped.
   decision on whether partial-success reporting should be added.
 - R29. Deletion, reordering, assignment, reminders, and filters must never
   be implemented as tools in either mode (see R19).
+
+## 8. Coverage Baseline
+
+Measured this session with `node --test --experimental-test-coverage test/`
+on Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 83.43% | 83.16% | 77.97% |
+
+Notes:
+
+- This figure includes test files themselves in the denominator (Node
+  v20's `--test-coverage-*` flags have no test-file-exclusion option).
+  Node 22+ excludes test files from coverage by default, so this number
+  will drop — mechanically, not because coverage regressed — the moment
+  the runtime is upgraded to 22+. Any future comparison must either stay
+  on Node 20 or re-baseline on Node 22+ before treating a delta as real.
+- Automated coverage-threshold enforcement (`--test-coverage-lines` and
+  friends) requires Node 22.8+ and is therefore **not yet in place** on
+  this project's Node 20 runtime. Coverage is currently a measured
+  baseline, not a gate.
+- The specific number to watch: `src/tools/write.js` is at **14.29%
+  function coverage**, the lowest of any file in `src/`. Any change to
+  that file should raise, not lower, this figure.
