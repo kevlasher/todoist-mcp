@@ -153,6 +153,36 @@ support:
 - The `url` structural field in `shape.js` is a raw passthrough and was
   never affected by URL removal, contrary to an initial assumption.
 
+### AD-3 — All redirects are refused
+
+**Decision:**
+
+- Any 3xx response from the Todoist API is treated as an error. The fetch
+  call passes `redirect: 'manual'` and any 300-399 status throws the same
+  `SsrfError` the allowlist check throws. The `Location` header value is
+  never read into the error message, because it is attacker-influenced
+  content.
+
+**Rationale:**
+
+- A normal Todoist API call does not redirect. A redirect therefore means
+  something changed, and failing loudly is more useful than silently
+  adapting. Refusing all redirects also makes the rule unconditional, with
+  no target-validation logic that could later be wrong.
+
+**Rejected alternative:**
+
+- Following same-host redirects and re-validating the target. Safe in
+  principle, since a relative `Location` can only resolve to the same
+  origin, but it requires validation logic that must stay correct over time
+  and it makes the rule conditional.
+
+IMPORTANT, and this is the point of recording it: if Todoist ever introduces
+a redirect on an endpoint this server calls, that endpoint will start
+failing with an `SsrfError` mentioning a 3xx status. That is this decision
+working as designed, not a bug. The fix at that point is to update the
+endpoint path to the new location, not to start following redirects.
+
 ## 5. Invariants
 
 Each invariant below is a statement that should be mechanically checkable
@@ -166,7 +196,7 @@ inventory as of this writing.
 | 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'` |
 | 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
 | 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **HOLDS** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption |
-| 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **PARTIALLY VIOLATED** | Review Finding 5 — the initial URL is checked, but `fetch()` follows redirects with no re-check of the `Location` target |
+| 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **HOLDS** | `test/invariant5-redirect-ssrf.test.js` — the invariant is now satisfied by refusing all redirects rather than by re-validating redirect targets, so no second URL is ever contacted |
 | 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** | Behavior inventory §1, §7; `test/registration.test.js` |
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
 | 8 | The server exposes write tools if and only if it was started with `TODOIST_READONLY` set to exactly `"false"`; this is decided once at startup, before any Todoist content is read, by not registering those tools at all, and cannot be changed for the lifetime of the running process. | **HOLDS** | `test/registration.test.js` — `'read-only mode registers only the 7 read tools, no writes'`, `'read/write mode registers the full 16-tool set'`; behavior inventory §1, §7. (Per-request mode selection and human confirmation are out of scope for this invariant — see AD-1.) |
@@ -391,6 +421,12 @@ Post-Session-6, measured the same way:
 | | Lines | Branches | Functions |
 |---|---|---|---|
 | All files | 89.39% | 86.36% | 85.81% |
+
+Post-Session-7, measured the same way:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 90.16% | 86.67% | 86.23% |
 
 `src/sanitize.js` branch coverage moved from 87.50% to 83.33%: `defangUrl`
 added branches not all of which are exercised, specifically a URL match

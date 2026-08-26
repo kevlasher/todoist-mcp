@@ -85,10 +85,26 @@ export function createClient(config) {
 
     let res;
     try {
-      res = await fetch(url.toString(), { method, headers, body: payload });
+      // redirect: 'manual' — a redirect from the Todoist API is never
+      // expected in normal operation, so any 3xx is treated as an error
+      // rather than something to transparently follow. This also stops the
+      // Location target (attacker-influenced, since it originates from
+      // whatever responded on the wire) from ever being contacted without
+      // passing through assertAllowedUrl.
+      res = await fetch(url.toString(), { method, headers, body: payload, redirect: 'manual' });
     } catch (err) {
       throw new TodoistApiError(
         `Network error contacting Todoist: ${redact(err?.message ?? String(err))}`
+      );
+    }
+
+    if (res.status >= 300 && res.status < 400) {
+      // Same error type the SSRF allowlist check throws, so a redirect and
+      // a disallowed host fail identically. Deliberately excludes the
+      // Location header value from the message — that value is
+      // attacker-influenced content and must not be echoed back.
+      throw new SsrfError(
+        `Refusing request: received HTTP ${res.status} (redirect); redirects are never followed.`
       );
     }
 
