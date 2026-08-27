@@ -450,3 +450,98 @@ Notes:
 - The specific number to watch: `src/tools/write.js` was at **14.29%
   function coverage** in the original baseline, the lowest of any file in
   `src/`. Any change to that file should raise, not lower, this figure.
+
+## 9. Contract Test Methodology
+
+The project's standing rule is that a test is written before its
+implementation and watched to fail, then the implementation is written to
+make it pass. A test that passes before its implementation exists is a
+stop-and-report event, not something to proceed past.
+
+Contract tests are exempt from that rule, because they have no
+implementation to write. A contract test asks the live Todoist API a
+question and records the answer. Its expected result on first run is green,
+and green means the premise under test holds.
+
+Because the failure-first step is what normally proves a test is not
+vacuous, contract tests replace it with two mandatory checks. Both must be
+performed before a green contract test result is treated as evidence:
+
+1. **Assertion inversion.** Restate the assertion to claim the opposite of
+   the premise and run it against the live API. It must go red. A test that
+   is green in both directions is not reading the response and proves
+   nothing.
+2. **Request body verification.** Assert that the outgoing request body
+   contains only the fields the test intends to send. If a field the test
+   claims not to be sending is present in the request, the API returning
+   that field back is trivially expected and confirms nothing about
+   partial-update semantics.
+
+Contract tests must live outside the `test/` directory, so that neither
+`npm test` (defined as `node --test test/`) nor the PostToolUse hook at
+`.claude/hooks/test-on-src-or-test-edit.sh` collects or triggers them. Live
+API calls must never fire as a side effect of editing a file.
+
+### Observed: POST /tasks/{id} partial update semantics
+
+Observed directly against the live Todoist API on 2026-08-27:
+
+- A request to `POST /tasks/{id}` carrying a JSON body of exactly
+  `{"priority": 4}` and nothing else received a response containing 28
+  top-level fields.
+- 27 of those fields were not sent in the request. Full list: `user_id`,
+  `id`, `project_id`, `section_id`, `parent_id`, `added_by_uid`,
+  `assigned_by_uid`, `responsible_uid`, `labels`, `deadline`, `duration`,
+  `is_collapsed`, `checked`, `is_deleted`, `added_at`, `completed_at`,
+  `completed_by_uid`, `updated_at`, `due`, `child_order`, `order_key`,
+  `content`, `description`, `note_count`, `day_order`, `completed_count`,
+  `postponed_count`.
+- The returned `content` matched the task's existing content exactly,
+  despite `content` never being sent in the request.
+- `description` and `labels` also returned. `content`, `description`, and
+  `labels` are all attacker-writable text fields, so the echoed surface is
+  wider than `content` alone.
+
+**Consequence:** the premise underpinning security review Finding 1 is
+confirmed. A caller updating one unrelated field receives the full current
+task state back, including attacker-writable text it never sent and did
+not ask for.
+
+**Provenance:**
+
+- Verified by `test-contract/update-task-partial.contract.js`, run against
+  a dedicated throwaway account, gated by
+  `test-contract/account-guard.js`.
+- Both of this section's mandatory checks were performed. Request-body
+  verification confirmed the outgoing body contained only `priority`.
+  Assertion inversion was run as a temporary copy of the test with the
+  assertions reversed; it failed as required, confirming the test reads
+  the live response and is not vacuous.
+- Todoist's published documentation could **not** be retrieved for this
+  endpoint's response schema — the docs site renders client-side and did
+  not yield schema content. There is therefore no documented claim to
+  compare against, and the original source of this premise is
+  unestablished. `RESUME.md` described it as having been "read in
+  documentation," which could not be substantiated. The premise now rests
+  on direct observation rather than on documentation.
+
+### Open items raised during Session 8
+
+These are observations, not decisions. Neither is resolved here.
+
+1. **`UNTRUSTED_NOTICE` scope is under-specified.** R25 states that every
+   READ-tool response is prefixed with `UNTRUSTED_NOTICE`. Invariant 2
+   states that write-tool responses receive the same framing and stripping
+   as read tools, but neither R25 nor Invariant 2 states that the notice
+   itself is prefixed to write-tool output. Observed directly during
+   Session 8: the `add-tasks` response carried the notice. So either R25 is
+   understated or the implemented behavior is broader than the spec
+   describes. This is a claims-accuracy question for Session 9 to resolve,
+   alongside the README and agent definition reconciliation.
+2. **Tool output consumers may hold stale assumptions.** The
+   `UNTRUSTED_NOTICE` prefix broke `scripts/live-smoke.js`, which had
+   parsed tool output as bare JSON since before remediation. That script
+   has been fixed. The open question is whether anything else that
+   consumes this server's tool output makes the same assumption. That is
+   an Agent OS question, not one this repository can answer, and belongs
+   with the other Agent OS items already noted in `docs/RESUME.md`.
