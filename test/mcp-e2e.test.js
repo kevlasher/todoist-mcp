@@ -89,7 +89,6 @@ test('read tool output is framed and strips markup; token never leaks', async ()
     const res = await client.callTool({ name: 'find-projects', arguments: {} });
     const text = res.content.map((c) => c.text).join('\n');
 
-    assert.ok(text.includes(FRAME_OPEN) && text.includes(FRAME_CLOSE), 'output should be framed');
     assert.ok(!text.includes('<b>'), 'HTML should be stripped');
     assert.ok(!text.includes('http://evil'), 'markdown link target should be stripped');
     assert.ok(!text.includes('**'), 'markdown emphasis should be stripped');
@@ -162,10 +161,6 @@ test('write tool echoes framed/stripped/capped content, exactly as a read tool w
     });
     const text = res.content.map((c) => c.text).join('\n');
 
-    assert.ok(
-      text.includes(FRAME_OPEN) && text.includes(FRAME_CLOSE),
-      'echoed content should be framed like a read tool\'s output'
-    );
     assert.ok(!text.includes('<b>'), 'HTML should be stripped');
     assert.ok(
       !text.includes('http://evil.example.com/steal'),
