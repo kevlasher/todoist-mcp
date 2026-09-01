@@ -4,7 +4,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../src/server.js';
 import { registerSecret } from '../src/redact.js';
-import { FRAME_OPEN, FRAME_CLOSE, safeField } from '../src/sanitize.js';
+import { safeField } from '../src/sanitize.js';
 
 const TOKEN = 'e2e-secret-token-do-not-leak-123456';
 
