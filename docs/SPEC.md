@@ -183,6 +183,56 @@ failing with an `SsrfError` mentioning a 3xx status. That is this decision
 working as designed, not a bug. The fix at that point is to update the
 endpoint path to the new location, not to start following redirects.
 
+### AD-4 — The untrusted-content notice is unconditional
+
+**Decision:**
+
+- `UNTRUSTED_NOTICE` is prepended to every successful tool response, read
+  and write alike, in `buildResult`. It is part of the response envelope
+  that every tool returns, applied the same way regardless of what the
+  response contains, and does not depend on whether the payload contains
+  any value that was actually passed through `safeField`.
+- Four write tools (`complete-tasks`, `uncomplete-tasks`,
+  `reschedule-tasks`, `add-comments`) therefore carry a notice explaining
+  fence markers while producing no fenced value. This is accepted, not
+  overlooked.
+
+**Rationale:**
+
+- `buildResult` is the single result construction path for all sixteen
+  tools, guaranteed by Invariant 12. Keeping the notice unconditional
+  there means every response carries it by construction, checkable by
+  reading one function, rather than depending on what a given response
+  happens to contain.
+- On a response containing no fenced value, the notice is vacuously true
+  rather than false. It states what the markers mean if present. It does
+  not misdescribe the response.
+
+**Rejected alternative:**
+
+- Applying the notice only when the payload contains at least one framed
+  value. Rejected on failure mode. A conditional would have to inspect
+  the payload to decide, and if that condition were ever wrong, a
+  response carrying genuinely attacker-controlled framed text would ship
+  without its warning. The current design's failure mode is a redundant
+  notice on four low-value responses. Trading a cosmetic failure for a
+  silent-absence-of-control failure is the wrong direction, and it adds a
+  branch to the one path where the project has deliberately spent effort
+  ensuring there are none.
+
+**Accepted cost:**
+
+- A warning that appears on every response, including ones with nothing
+  to warn about, gives the model less reason to attend to it. This is a
+  plausible cost, not a measured one; there is no instrumentation here
+  that would detect it. It is accepted in exchange for the failure mode
+  above.
+- If that cost later proves to matter, the cheaper remedy is to reduce
+  what the four tools echo rather than to make the notice conditional.
+  Three of them return only caller-supplied ids and `add-comments`
+  returns only a generated id, so none of them needs to echo anything.
+  That is a separate question from the notice and is not resolved here.
+
 ## 5. Invariants
 
 Each invariant below is a statement that should be mechanically checkable
@@ -190,20 +240,58 @@ against the whole codebase (e.g. "no file matching X imports/does Y"), not
 about one function. Status reflects the security review and behavior
 inventory as of this writing.
 
-| # | Invariant | Status | Citation |
-|---|---|---|---|
-| 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **HOLDS** | Behavior inventory §4–5, §8; review "Also checked" §3 |
-| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'` |
-| 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
-| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **HOLDS** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption |
-| 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **HOLDS** | `test/invariant5-redirect-ssrf.test.js` — the invariant is now satisfied by refusing all redirects rather than by re-validating redirect targets, so no second URL is ever contacted |
-| 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** | Behavior inventory §1, §7; `test/registration.test.js` |
-| 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
-| 8 | The server exposes write tools if and only if it was started with `TODOIST_READONLY` set to exactly `"false"`; this is decided once at startup, before any Todoist content is read, by not registering those tools at all, and cannot be changed for the lifetime of the running process. | **HOLDS** | `test/registration.test.js` — `'read-only mode registers only the 7 read tools, no writes'`, `'read/write mode registers the full 16-tool set'`; behavior inventory §1, §7. (Per-request mode selection and human confirmation are out of scope for this invariant — see AD-1.) |
-| 9 | No log line emitted by `src/logger.js` contains the raw, unredacted API token. | **HOLDS** | Behavior inventory §2–3, §6 (tested); review "Also checked" §3 — logger redacts every line, `client.js` never logs headers/bodies |
-| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path) |
-| 11 | `API_BASE` / outbound hostname is a fixed literal, never derived from any tool input. | **HOLDS** | Behavior inventory §6; review Finding 5 discussion ("the host is hardcoded... never derived from any tool argument") |
-| 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **HOLDS** | `test/result-builder-shape.test.js` — `'Invariant 12: a tool result object is constructed in exactly one place in src/, never ad hoc per tool'`. The check is by object shape (any `{ content: [{ type: 'text', ... }] }`-shaped literal outside the one designated builder function), not by function name. Verified by deliberately introducing a violating tool and confirming the test caught it at the exact line. |
+**Status** is a claim about the codebase: does the invariant hold right
+now. **Evidence** is a separate claim about how that is known. The two
+are independent, and an invariant can be true while the evidence for it
+is weak. Grades:
+
+- **TESTED** — an automated test fails if this invariant is violated, and
+  that test has been proven capable of failing by deliberately
+  introducing the violation. Untested-but-passing is not TESTED; a test
+  that has only ever been green has not demonstrated it can detect
+  anything.
+- **INSPECTED** — established by reading the code. True as of the
+  reading, but no test would catch a regression.
+- **ASSERTED** — carried over from `docs/behavior-inventory.md` or
+  `docs/todoist-mcp-security-review.md` and not independently confirmed
+  during this remediation.
+- **UNGRADED** — the evidence behind this row has not been examined in
+  this remediation. The status claim stands; the strength of its support
+  is unknown. Grading the remaining rows is tracked work, not a
+  publishing gate.
+
+An UNGRADED row is not a weaker row than a TESTED one. It is a row nobody
+has checked. Invariant 1 was cited as tested for months while its only
+tool-output assertion could not fail, which is why this column exists.
+
+| # | Invariant | Status | Evidence | Citation |
+|---|---|---|---|---|
+| 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **HOLDS** | **TESTED** (`find-projects`) / **INSPECTED** (six remaining read tools) | `test/mcp-e2e.test.js` — `'read tool output is framed and strips markup; token never leaks'`, which asserts the echoed project name matches exactly what `safeField` produces. Proven capable of failing by replacing `shapeProject`'s `safeField` call with `stripMarkup`, which failed this assertion alone. Proves `find-projects` routes through the framing helper; it does not prove the helper frames correctly, which is `test/sanitize.test.js`'s job. Remaining read tools covered by inspection of the shapers in `src/shape.js`. Behavior inventory §4–5, §8; review "Also checked" §3 |
+| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** | **TESTED** (`update-tasks`) / **INSPECTED** (four write tools framing an echoed field) / n/a (four echoing no Todoist-origin text, see AD-4) | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Not independently proven capable of failing during Session 9; it survived the `shapeProject` break unchanged, which is expected since that break touched only the read path |
+| 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | **UNGRADED** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
+| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **HOLDS** | **UNGRADED** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption |
+| 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **HOLDS** | **UNGRADED** | `test/invariant5-redirect-ssrf.test.js` — the invariant is now satisfied by refusing all redirects rather than by re-validating redirect targets, so no second URL is ever contacted |
+| 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** | **UNGRADED** | Behavior inventory §1, §7; `test/registration.test.js` |
+| 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | **UNGRADED** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
+| 8 | The server exposes write tools if and only if it was started with `TODOIST_READONLY` set to exactly `"false"`; this is decided once at startup, before any Todoist content is read, by not registering those tools at all, and cannot be changed for the lifetime of the running process. | **HOLDS** | **UNGRADED** | `test/registration.test.js` — `'read-only mode registers only the 7 read tools, no writes'`, `'read/write mode registers the full 16-tool set'`; behavior inventory §1, §7. (Per-request mode selection and human confirmation are out of scope for this invariant — see AD-1.) |
+| 9 | No log line emitted by `src/logger.js` contains the raw, unredacted API token. | **HOLDS** | **UNGRADED** | Behavior inventory §2–3, §6 (tested); review "Also checked" §3 — logger redacts every line, `client.js` never logs headers/bodies |
+| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** | **UNGRADED** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path) |
+| 11 | `API_BASE` / outbound hostname is a fixed literal, never derived from any tool input. | **HOLDS** | **UNGRADED** | Behavior inventory §6; review Finding 5 discussion ("the host is hardcoded... never derived from any tool argument") |
+| 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **HOLDS** | **UNGRADED** | `test/result-builder-shape.test.js` — `'Invariant 12: a tool result object is constructed in exactly one place in src/, never ad hoc per tool'`. The check is by object shape (any `{ content: [{ type: 'text', ... }] }`-shaped literal outside the one designated builder function), not by function name. Verified by deliberately introducing a violating tool and confirming the test caught it at the exact line. |
+
+**On the framing evidence in Invariants 1 and 2.** Until Session 9, both
+rows cited assertions that checked only whether `FRAME_OPEN` and
+`FRAME_CLOSE` appeared somewhere in the tool output. `UNTRUSTED_NOTICE`
+contains both markers in its own explanatory text and is prepended to
+every response, so those assertions passed unconditionally and proved
+nothing. Invariant 2 was in fact carried by a second, valid assertion the
+citation did not name. Invariant 1 had no valid test evidence at that
+level until commit `adf414a`. Both confounded assertions were removed, a
+valid assertion was added for the read path, and
+`test/framing-assertion-shape.test.js` now fails if the idiom reappears.
+That tripwire is deliberately narrow: it matches one specific expression
+form and does not trace data flow, so a differently phrased variant would
+pass it.
 
 ## 6. Tool Surface
 
@@ -240,8 +328,12 @@ the caller wrote in the same call.
 ## 7. Behavioral Requirements
 
 Restated from the behavior inventory as requirements to preserve. Items
-flagged **[DECISION NEEDED]** look accidental rather than intended and are
-called out for your judgment rather than silently kept or dropped.
+were previously flagged as needing a decision where the behavior looked
+accidental rather than intended. All of them were resolved in Session 9:
+each is now either a decision recorded inline, marked **DECIDED, Session
+9.**, or a confirmed defect recorded in section 10, marked **Superseded,
+Session 9.** with a pointer to its entry there. None remain awaiting
+judgment.
 
 ### Configuration
 - R1. Read-only must be the default; writes enable only when
@@ -251,23 +343,24 @@ called out for your judgment rather than silently kept or dropped.
 - R2. Numeric caps (`TODOIST_MAX_OUTPUT_CHARS`, `TODOIST_MAX_FIELD_CHARS`,
   `TODOIST_MAX_ITEMS`) must fall back to their defaults (50000 / 2000 / 200)
   when unset or unparseable.
-- **[DECISION NEEDED]** Numeric caps ≤ 0 are silently rejected and fall back
-  to the default rather than erroring. This looks like defensive
-  fail-safe behavior rather than an accident — worth confirming it's
-  intended (silently ignoring an operator's explicit `"0"`/`"-5"` config
-  vs. surfacing a config error).
+- **DECIDED, Session 9.** Numeric caps ≤ 0 keep falling back to their
+  defaults, and a warning naming the variable and the rejected value is
+  emitted to stderr at startup. Honoring a cap of 0 would produce a
+  functionally dead server, so ignoring the value is right; what is
+  missing today is that an operator who sets a cap and then sees default
+  behavior has no way to learn why. The warning goes to stderr only, per
+  R20, and a bad cap value must not prevent startup. Implementation is
+  scheduled for a later session.
 - R3. `TODOIST_API_KEY` must take priority over `TODOIST_API_KEY_FILE` when
   both are set; file contents must be trimmed before use.
 - R4. An unreadable key file must throw a fixed generic message that does
   not include the underlying OS error text or file path.
 - R5. With no usable token from either source, `loadConfig` must throw
   without ever echoing any credential value.
-- **[DECISION NEEDED]** An empty/whitespace-only `TODOIST_API_KEY_FILE`
-  content is silently treated as "file doesn't exist" rather than a
-  distinct error. Same question for an empty/whitespace-only
-  `TODOIST_API_KEY` falling through to check the file instead of erroring
-  immediately. Both look like intentional fallback chaining, but neither
-  produces a diagnostic distinguishing "not set" from "set to garbage."
+- **Superseded, Session 9.** Confirmed as a defect and scheduled. See
+  section 10, D-4. The section 10 entry is broader than this item was: it
+  records that the resulting error message names `TODOIST_API_KEY` even
+  when the operator configured `TODOIST_API_KEY_FILE`.
 
 ### Redaction
 - R6. `registerSecret` must ignore non-string values and strings under 4
@@ -275,13 +368,14 @@ called out for your judgment rather than silently kept or dropped.
 - R7. `redact()` must replace every occurrence of every registered secret,
   plus `Bearer <token>`- and `authorization: <value>`-shaped substrings, even
   when the specific token was never registered.
-- **[DECISION NEEDED]** Registered secrets accumulate forever in a
-  module-level `Set` with no bound and no unregister mechanism. Harmless for
-  this single-token server today, but this is the kind of behavior that
-  looks accidental (an artifact of "just never remove anything") rather than
-  a deliberate design choice, and should be confirmed rather than carried
-  forward silently if this server's scope ever grows to handle multiple
-  tokens per process.
+- **DECIDED, Session 9.** Registered secrets keep accumulating in an
+  unbounded module-level `Set`, with no unregister mechanism. Never
+  removing an entry is the safe direction, because an unregistered secret
+  is one that can leak; an unregister mechanism would create a failure
+  mode in which a still-live token stops being scrubbed. Unbounded growth
+  is only reachable if this process ever holds many tokens over its
+  lifetime, which the current single-token design forbids. Reopen this if
+  that scope changes.
 
 ### Logging
 - R8. Every log line must carry an ISO-8601 timestamp and level tag, be
@@ -302,12 +396,24 @@ called out for your judgment rather than silently kept or dropped.
   to `maxFieldChars` with a truncation marker inside the closing fence.
 - R12. `capOutput` must truncate oversized payloads to `maxOutputChars` and
   append a notice naming the cap.
-- **[DECISION NEEDED]** `UNTRUSTED_NOTICE` is prepended to every read-tool
-  response unconditionally, even when that response contains no framed
-  field at all. This may be intentional (a constant reminder to the model)
-  or accidental noise — worth confirming, especially since the current test
-  suite's assertion that framing occurred could in principle be satisfied by
-  this notice's own text rather than an actual framed field.
+- **DECIDED, Session 9.** This item bundled two questions with different
+  answers.
+
+  The design question, whether the unconditional prefix is intended, is
+  resolved in AD-4: it is intended and retained. The prefix also turned
+  out to be broader than this item described. It is applied to every
+  response from all sixteen tools, not to read-tool responses only,
+  because `buildResult` is the single construction path for all of them.
+  R25 was understated rather than wrong.
+
+  The second half was not a design question. The suspicion that the
+  suite's framing assertion could be satisfied by the notice's own text
+  was correct, and it was a real defect. `UNTRUSTED_NOTICE` contains the
+  literal fence markers in its explanatory text, so two assertions
+  checking for marker presence in tool output passed unconditionally.
+  Both were removed, a valid assertion was added for the read path, and
+  `test/framing-assertion-shape.test.js` now fails if the idiom returns.
+  See the note below the Invariants table in section 5.
 
 ### HTTP client
 - R13. `API_BASE` must remain a hardcoded literal (`https://api.todoist.com/api/v1`);
@@ -322,12 +428,16 @@ called out for your judgment rather than silently kept or dropped.
 - R17. `getPaginated` must respect the configured item cap exactly (slice
   final results to cap length) and follow `next_cursor` until exhausted or
   capped.
-- **[DECISION NEEDED]** `getPaginated`'s `truncated` flag is `false` when the
-  item count exactly equals the cap with no further cursor, even though the
-  caller has no way to distinguish "this is really all the data" from "this
-  happened to land exactly on the cap boundary." This looks like a
-  reasonable definition but is an edge case worth confirming rather than
-  assuming.
+- **DECIDED, Session 9.** The cursor-based path is already correct and must
+  not change. The flag is `items.length >= cap && !!cursor`, so exactly-cap
+  items with a non-null `next_cursor` reports truncated, and exactly-cap
+  items with a null cursor correctly does not — the API is stating there is
+  no more data. The original framing of this item misidentified
+  where the problem was. The defect is in the bare-array fallback branch,
+  which `break`s with no cursor and therefore always reports
+  not-truncated, even when the array came back full at the requested page
+  limit. Fix scheduled for a later session: that branch must set the flag
+  based on whether the array came back at the page limit.
 
 ### Server lifecycle
 - R18. Read tools must register in every mode; write tools must register
@@ -343,61 +453,64 @@ called out for your judgment rather than silently kept or dropped.
 - R21. `find-tasks` must route a non-empty `query` to `/tasks/filter`; when
   no query is given, `ids[]` must be joined into a comma-separated parameter
   against `/tasks`.
-- **[DECISION NEEDED]** When `query` is supplied to `find-tasks`, the other
-  filter args (`project_id`/`section_id`/`label`/`parent_id`/`ids`) are
-  silently ignored rather than combined or rejected. This is easy to miss as
-  a caller and looks like it could confuse an agent into believing a
-  combined filter was applied when it wasn't — worth deciding whether this
-  should instead be a validation error.
+- **Superseded, Session 9.** Confirmed as a defect and scheduled. See
+  section 10, D-3.
 - R22. `find-tasks-by-date` must require at least one of `preset`/`date`,
   throwing `'Provide either preset or date.'` otherwise; `preset` takes
   priority over `date`/`comparison` when both are given.
-- **[DECISION NEEDED]** `find-tasks-by-date`'s `comparison` field is declared
-  as `.enum([...]).default('on').optional()` — the `.optional()` after
-  `.default()` makes the schema-level default unreachable dead code; the
-  actual default is supplied by the handler's `?? 'on'`. Functionally
-  harmless (the fallback still happens), but this is very likely an
-  accidental ordering bug in the Zod chain rather than intended, and should
-  be fixed or explicitly documented as intentional-but-redundant.
+- **DECIDED, Session 9.** Fix it, scheduled for a later session, and fix it
+  as a bug class rather than as one instance. `.default()` followed by
+  `.optional()` makes the schema-level default unreachable dead code
+  wherever it appears, not just on this field. The later session must
+  search every schema in `src/` for that ordering and correct all
+  occurrences together.
 - R23. `find-comments` must require exactly one of `task_id`/`project_id`,
   throwing otherwise.
 - R24. `get-overview` must fetch projects/sections/labels/tasks concurrently
   and fail entirely (no partial results) if any one fetch rejects.
-- **[DECISION NEEDED]** `get-overview`'s due-today/overdue counts compare
-  against UTC "today" on the server host, not the user's local timezone.
-  For a user near midnight in a non-UTC zone this will misclassify tasks.
-  This is flagged in both source documents as a real behavioral
-  concern, not just a hypothetical — worth deciding whether it needs a
-  timezone parameter or documented caveat.
-- **[DECISION NEEDED]** `get-overview` silently drops any section whose
-  `project_id` doesn't match a project in the same result set, with no
-  error or note. Likely accidental (an orphaned-data edge case), not a
-  deliberate filtering choice.
-- R25. Every read-tool response must be prefixed with `UNTRUSTED_NOTICE` and
-  size-capped via `capOutput` (see R12, and the DECISION flag above on
-  whether the unconditional prefix itself is intended).
+- **Superseded, Session 9.** Confirmed as a defect and scheduled. See
+  section 10, D-2.
+- **Superseded, Session 9.** Confirmed as a defect and scheduled. See
+  section 10, D-1. The section 10 entry is broader than this item was: it
+  records the dropped sections as one consequence of a larger root cause,
+  capped fetches feeding derived counts, not as an isolated edge case.
+- R25. Every tool response, read and write alike, must be prefixed with
+  `UNTRUSTED_NOTICE` and size-capped via `capOutput` (see R12). The
+  prefix is applied unconditionally in `buildResult` and does not depend
+  on whether the payload contains any framed value. See AD-4 for why,
+  including the accepted consequence that four write tools carry the
+  notice while framing nothing.
 
 ### Write tools
 - R26. `update-tasks` must send only caller-supplied fields (besides `id`)
   in the request body — partial update semantics, not full-object replace.
-- **[DECISION NEEDED]** `update-tasks` reports `ok: true` purely because the
-  HTTP call didn't throw, without verifying the response reflects the
-  intended change. Combined with Finding 1 (unframed echoed `content`),
-  this is a compounding risk, not just a minor gap — worth deciding whether
-  `ok` should mean anything more than "no exception."
+- **DECIDED, Session 9.** `ok` must mean more than "no exception". Session 8
+  established by direct observation that `POST /tasks/{id}` returns the
+  task's full current state, so the handler can compare the fields it sent
+  against the fields returned. One known complication: `due_string` is
+  natural language that Todoist interprets into a `due` object, so it will
+  not compare literally and needs different treatment from fields sent
+  verbatim. Design and implementation are scheduled for a later session.
+  Section 3 Non-Goals currently states accurately that no such
+  verification exists; that statement must be updated when this is
+  implemented, not before.
 - R27. `reschedule-tasks` must require at least one of `due_string`/
   `due_date`/`due_datetime` per task (currently enforced via Zod `.refine()`,
   not a handler throw — inconsistent with the handler-level checks in
   `find-comments`/`add-comments`, but not necessarily wrong).
 - R28. `add-comments` must require exactly one of `task_id`/`project_id` per
   comment.
-- **[DECISION NEEDED]** Multi-item write tools (`add-tasks`, `update-tasks`,
-  `reschedule-tasks`, `add-comments`) process items sequentially with no
-  rollback on a mid-batch failure, and the error response gives no
-  breakdown of which items succeeded before the failure. This is very
-  likely an accidental gap (not a deliberate design choice) given how much
-  it undermines debuggability of partial failures — flagged for your
-  decision on whether partial-success reporting should be added.
+- **DECIDED, Session 9.** Add partial-success reporting to the multi-item
+  write tools (`add-tasks`, `update-tasks`, `reschedule-tasks`,
+  `add-comments`). Do not add automatic retry: these writes are not
+  idempotent, and if `add-tasks` fails partway the caller often cannot tell
+  whether the failing item was created before the error, so retrying risks
+  duplicates. `update-tasks` is safer to reapply, but giving retry-safe and
+  retry-unsafe tools the same behavior is how subtle data corruption
+  happens. The response must report which items succeeded, which failed,
+  and which were never attempted, and leave the decision to the agent or
+  the human. Rollback remains out of scope and stays disclosed in section 3
+  Non-Goals. Implementation is scheduled for a later session.
 - R29. Deletion, reordering, assignment, reminders, and filters must never
   be implemented as tools in either mode (see R19).
 
@@ -545,3 +658,141 @@ These are observations, not decisions. Neither is resolved here.
    consumes this server's tool output makes the same assumption. That is
    an Agent OS question, not one this repository can answer, and belongs
    with the other Agent OS items already noted in `docs/RESUME.md`.
+
+## 10. Confirmed Defects, Scheduled
+
+Places where the code does not do what section 7 requires, or where it does
+something a caller would not reasonably expect from the tool's own
+description. These are distinct from the decisions recorded in section 4 and
+from the `DECIDED` entries in section 7: nothing here was chosen. Each was
+confirmed by reading the code during Session 9 and is scheduled rather than
+resolved.
+
+An entry leaves this section when the defect is fixed and a test exists that
+fails if it returns.
+
+### D-1 — `get-overview` reports counts derived from a capped fetch, with no signal
+
+**Confirmed** by reading `src/tools/read.js` during Session 9.
+
+`get-overview` issues four `getPaginated` calls, each independently capped at
+`cfg.maxItems` (default 200). Every derived number is computed from those
+capped sets:
+
+- each project's `active_task_count`, counted across the tasks fetch
+- `totals.due_today` and `totals.overdue`, counted across the same fetch
+- `totals.projects`, `totals.active_tasks`, `totals.labels`, each the length
+  of its own capped fetch
+
+For an account with more than 200 active tasks, these numbers are not
+truncated, they are wrong. A project holding 40 active tasks can report 3,
+because only 3 of its tasks fell inside the first 200 fetched. Two hundred
+active tasks is ordinary for a GTD account, so this is not a large-account
+edge case.
+
+`getPaginated` returns a `truncated` flag on each of the four calls.
+`get-overview` discards all four. In their place the payload carries a fixed
+`note` string stating that counts reflect up to the configured cap and large
+accounts may be truncated. That note is emitted unconditionally, so it does
+not distinguish a correct overview from a wrong one. A caller cannot tell
+which it received.
+
+Two further consequences of the same root cause:
+
+- A section whose `project_id` does not appear in the projects fetch is
+  silently dropped from the output. Reachable when the projects fetch itself
+  is capped.
+- `get-overview`'s input schema is empty, so unlike the other list tools it
+  accepts no `limit` and a caller cannot raise the cap for this view.
+
+**Fix criteria:**
+
+- Truncation must be visible per fetch in the response, derived from the
+  `truncated` flags rather than from a fixed string.
+- Any total or per-project count computed from a truncated fetch must be
+  identifiable as a floor rather than an exact count.
+- A dropped orphaned section must be surfaced, not silently discarded.
+- The unconditional `note` string is removed or replaced by a signal that is
+  only present when it applies.
+- A test fails if a count derived from a truncated fetch is presented as
+  exact.
+
+**Owner:** Session 10. Gates publishing.
+
+### D-2 — `get-overview` computes "today" in UTC on the server host
+
+**Confirmed** by reading `src/tools/read.js` during Session 9. Also flagged
+in both source documents.
+
+`due_today` and `overdue` are computed by string-comparing each task's
+`due.date` against `new Date().toISOString().slice(0, 10)`, which is always
+UTC on the host. For a user in a non-UTC zone, tasks are misclassified near
+the date boundary. For a US Eastern user, every evening after 8pm local is
+already tomorrow in UTC.
+
+Same tool as D-1 and the same two output fields, but a different root cause.
+Fixing one does not fix the other.
+
+**Fix criteria:**
+
+- The timezone used for the comparison is explicit, not inferred from the
+  host.
+- The response states which timezone was used, so a wrong answer is visibly
+  wrong rather than silently wrong.
+- Behavior is defined for tasks with a floating due date versus a datetime
+  carrying its own timezone.
+
+**Owner:** Session 10 or later. Gates publishing.
+
+### D-3 — `find-tasks` advertises filters it silently discards
+
+**Confirmed** by reading `src/tools/read.js` during Session 9.
+
+When a non-empty `query` is supplied, the handler calls `/tasks/filter` with
+only that query. The `project_id`, `section_id`, `label`, `parent_id`, and
+`ids` arguments are never placed on the request and never reach Todoist.
+They are not combined with the query and their presence alongside it is not
+an error.
+
+The tool's own description offers `query` and those five arguments as
+alternatives for narrowing the same search, with nothing marking them
+mutually exclusive. The consumer misled is the agent, which reads the tool
+schema rather than any documentation, so this cannot be corrected in
+`README.md` alone.
+
+**Fix criteria:**
+
+- The tool's description and the affected fields' `.describe()` text state
+  that `query` supersedes the other filters.
+- Whether the combination should instead be rejected as a validation error is
+  a separate decision, deliberately not made here. Changing it to an error is
+  a behavior change; correcting the description is not.
+
+**Owner:** Session 10. Gates publishing, description text only.
+
+### D-4 — Token-source errors name the wrong variable
+
+**Confirmed** by reading `src/config.js` during Session 9.
+
+`resolveToken` returns an empty string in three distinguishable situations:
+neither environment variable set; `TODOIST_API_KEY_FILE` set to a file that
+exists but contains only whitespace; `TODOIST_API_KEY` set to whitespace with
+no file configured. All three reach the same `loadConfig` throw, whose
+message states that `TODOIST_API_KEY` is not set. An operator who configured
+a token file correctly, and whose file is empty, is told to set a variable
+they deliberately did not use.
+
+A fourth case is already distinct and correct: an unreadable file throws its
+own generic message, which per R4 must not include the OS error text or the
+path.
+
+**Fix criteria:**
+
+- The three empty-token cases produce distinguishable messages.
+- No message includes the file path, file contents, or any part of a token
+  value. R4's constraint is unchanged. Naming which variable was consulted is
+  not a leak, since the operator supplied it.
+- A test fails if any of these messages contains a value read from the
+  environment or the file.
+
+**Owner:** Session 10 or later. Does not gate publishing.
