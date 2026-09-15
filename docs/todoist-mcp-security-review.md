@@ -17,9 +17,10 @@
 | 3 | HTML/markdown stripping | **Partial** | Solid for inline HTML and inline markdown links/emphasis. Misses reference-style links and bare URLs. Entirely absent on the write path. |
 | 4 | Token/credential redaction | **Partial** | Solid at the logger and HTTP client layers. Not applied at the final tool-error egress point. |
 | 5 | Environment-gated read-only mode | **Implemented** | Fail-closed, enforced at tool registration (not call time), well tested. |
-| 6 | Two-agent separation with user confirmation before write | **Absent** | Only one agent exists in this repo. It is write-enabled by its own checked-in config. No confirmation gate exists anywhere in the code. |
 
-Two of the six controls you believe you have are not fully there. One of them (#6) is not there at all as described.
+Control #6, two-agent separation with user confirmation before write, has been withdrawn from this inventory: it described an intended design that was never implemented, and no claim should rest on it.
+
+Three of the five controls you believe you have are not fully there. Two of those three, #2 and #3, are partial for the same reason — neither is applied on the write path — which is Finding 1 below.
 
 ---
 

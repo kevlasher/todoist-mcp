@@ -6,6 +6,24 @@ no claims beyond what those two sources support.
 
 ---
 
+## Decision log
+
+An index, not a record. Each row names what a session changed and where
+the detail lives. The decisions themselves are in section 4, the
+requirement-level decisions in section 7, the coverage history in section
+8 and the confirmed defects in section 10.
+
+Maintenance: one row per session, added when the session ends.
+
+| Session | What changed | Detail in |
+|---|---|---|
+| 1–4 | Remediation of the six findings in `docs/todoist-mcp-security-review.md`. All six closed. Original coverage baseline established. Session-level detail is not reconstructible from the documents in this repo. | Security review; section 8 |
+| 5 | Coverage rose to 87.28% lines / 84.58% branches / 83.58% functions. Work not otherwise recorded here. | Section 8 |
+| 6 | Coverage rose to 89.39% / 86.36% / 85.81%. Work not otherwise recorded here. | Section 8 |
+| 7 | Coverage rose to 90.16% / 86.67% / 86.23%. `defangUrl` added, lowering `src/sanitize.js` branch coverage. Work not otherwise recorded here. | Section 8 |
+| 8 | Contract-test methodology established, with assertion inversion and request-body verification as mandatory substitutes for the failure-first step. `POST /tasks/{id}` partial-update semantics observed directly against the live API on 2026-08-27, confirming Finding 1's premise. Account guard retrofitted onto `scripts/live-smoke.js`. | Section 9 |
+| 9 | AD-4 and AD-5 recorded. Two confounded framing assertions removed and a tripwire added. Invariant 1's framing evidence replaced with a real comparison; Invariant 2's proven capable of failing. Evidence column added to section 5. All ten `[DECISION NEEDED]` items in section 7 resolved. Section 10 opened with D-1 through D-5. Section 6's stale sanitizer marks corrected. Both Session 8 open items closed. Fixture-default collision and the unverified `url` format assumption recorded as scheduled work. | Sections 4, 5, 6, 7, 8, 9, 10 |
+
 ## 1. Purpose
 
 This server exposes a single Todoist account to an LLM agent over MCP, as a
@@ -86,13 +104,11 @@ support:
   mode is enforced at this server's own tool-registration time, based on the
   environment it's given, not against the intent of whatever set that
   environment.
-- **No two-agent confirmation gate exists.** Despite prior claims to the
-  contrary (control #6), there is no mechanism anywhere in this codebase
-  that pauses a write for human confirmation. A single agent process, if
-  configured with `TODOIST_READONLY=false`, can execute a write the instant
-  the model emits the tool call. Any writeup claiming a confirmation gate
-  exists is false until one is built. See AD-1 for why this is not this
-  codebase's job to build, and what would actually implement it.
+- **No two-agent confirmation gate exists.** There is no mechanism anywhere
+  in this codebase that pauses a write for human confirmation. A single
+  agent process, if configured with `TODOIST_READONLY=false`, can execute a
+  write the instant the model emits the tool call. See AD-1 for why this is
+  not this codebase's job to build, and what would actually implement it.
 - **No verification that a write actually achieved its intended effect**
   beyond receiving a non-error HTTP status. Tools report `ok: true` on any
   non-throwing response; they do not diff the API's returned state against
@@ -109,10 +125,9 @@ support:
 
 **Facts, established by direct inspection of the running configuration:**
 
-- The agent definition at
-  `/workspace/projects/agent-os/.claude/agents/todoist.md` launches this
-  server with `TODOIST_READONLY: "false"` in its frontmatter `env` block.
-  Mode is therefore fixed per agent definition, not per request.
+- The agent definition that launches this server in the consuming project
+  sets `TODOIST_READONLY: "false"` in its frontmatter `env` block. Mode is
+  therefore fixed per agent definition, not per request.
 - Nothing in this codebase, and nothing in the invoking layer as currently
   configured, selects mode based on the content of the user's request. This
   server correctly enforces whichever mode it is started in and has no
@@ -120,10 +135,9 @@ support:
 - The intended design is that read-only is the default and write mode is
   used only when the user's own typed request actually calls for a change.
   That intent is not implemented anywhere today.
-- The smallest change that would implement it is two agent definitions —
-  one read-only, one write-capable — with routing that picks between them
-  based on the request. That routing is configuration in the Agent OS
-  project, not code in this repository.
+- Implementing it requires a launching environment that selects between a
+  read-only and a write-capable definition per request. That selection is
+  configuration in the consuming project, not code in this repository.
 
 **Decision:**
 
@@ -233,6 +247,128 @@ endpoint path to the new location, not to start following redirects.
   returns only a generated id, so none of them needs to echo anything.
   That is a separate question from the notice and is not resolved here.
 
+### AD-5 — The agent definition in this repo is an example, not the live one
+
+**Facts, established by direct inspection during Session 9:**
+
+- A Claude Code subagent definition exists at two paths:
+  `.claude/agents/todoist.md` in this repository, and
+  `/workspace/projects/agent-os/.claude/agents/todoist.md` in the
+  consuming project. As of Session 9 the two files were byte-identical
+  and neither had been edited since July 21.
+- Only the Agent OS copy is loaded by anything. Nothing reads the copy in
+  this repository at runtime. Editing it has no runtime effect.
+- The repository copy launched write-capable, with
+  `TODOIST_READONLY: "false"` in its frontmatter `env` block, and
+  contained a personal deployment path and a personal identifier.
+- Nothing synchronises the two files. There is no mechanism that would
+  detect them diverging, and no marking on either that says which is
+  authoritative.
+
+**Decision:**
+
+- The copy in this repository is an example. It lives at
+  `docs/examples/todoist-subagent.md`, outside `.claude/agents/`. It uses
+  placeholder paths and carries no personal identifiers. The explanation
+  of what it is lives beside it in `docs/examples/README.md`, not inside
+  the file.
+- The definition that actually runs lives in whatever project consumes
+  this server. This repository ships the server, not a deployment of it.
+- The example launches read-only by omitting `TODOIST_READONLY`
+  entirely, rather than by setting it to `"true"`.
+- The example is documentation. It is deliberately not kept in sync with
+  any live definition, and no process should assume it is.
+
+**Rationale:**
+
+- Two byte-identical copies with no synchronisation is a drift hazard. If
+  someone edits either one, the other silently disagrees and nothing
+  reports it. This is the same shape of problem as the two server
+  directories described in `docs/RESUME.md` section 2, at smaller scale.
+  Naming one copy the example removes the ambiguity rather than trying to
+  keep the copies equal.
+- Omitting `TODOIST_READONLY` demonstrates the fail-safe default that
+  R1 and Invariant 8 specify. Setting `"true"` would produce the same
+  read-only process but teach the wrong rule: it invites a reader to
+  conclude that the value is what makes the process read-only, and
+  therefore that unsetting the variable enables writes. The actual rule
+  is that writes require the exact string `"false"` and every other
+  value, absence included, is read-only. An example is a claim about how
+  the thing works, so it should be true in the way it is read, not only
+  in its result.
+- Personal deployment paths and personal identifiers do not belong in a
+  repository intended for publication.
+- The example does not live in `.claude/agents/`. Claude Code loads
+  subagent definitions from that directory, and its published behavior is
+  to skip a file whose opening `---` is not the first line, reading it as
+  having no frontmatter, treating it as documentation, and reporting
+  nothing in the session. An earlier draft of this example relied on that
+  rule: a comment block above the frontmatter made the file inert. Two
+  things are wrong with relying on it. Deleting four comment lines
+  silently converts the file into a live subagent pointing at placeholder
+  paths. And a reader who copies the file as a template, comment
+  included, gets a subagent that never loads and is never told why. A
+  file outside `.claude/agents/` is inert because of where it is, which
+  requires no rule to keep holding.
+- The explanation does not live in the file's body either. The body of a
+  subagent definition becomes the agent's system prompt, so a reader who
+  copies the file would inherit "EXAMPLE ONLY, this file does not run" as
+  live instructions to the agent.
+
+**Consequences:**
+
+- AD-1 established that mode selection belongs to the agent layer. AD-5
+  is the file-level consequence: the artifact that makes that selection
+  is not in this repository, and changing the example does not change any
+  running agent's mode.
+- The example must remain honest about the server's actual behavior, not
+  merely non-personal. It names real environment variables and real tool
+  names, and it carries agent-facing warnings for D-1, D-2, and D-3.
+  Those warnings are part of each defect's fix criteria: when a defect in
+  section 10 is fixed, removing its warning from the example is part of
+  fixing it.
+- The example is read-only, so its body text describes a process with no
+  write tools registered. A write-capable definition is not a matter of
+  flipping one env value; it needs its own body text, because a read-only
+  process registers no write tools at all and the body would otherwise
+  describe capabilities that do not exist.
+- Verifying the frontmatter format surfaced a constraint this spec had not
+  recorded. An inline MCP server declared in subagent frontmatter is
+  connected when the subagent starts and disconnected when it finishes,
+  while a frontmatter entry that is a bare string naming an
+  already-configured server shares the parent session's connection
+  instead. The posture described in AD-1 and Invariant 8, where mode is
+  fixed for the lifetime of a process, assumes the former. A deployment
+  that defines this server in `.mcp.json` and references it by name from
+  the frontmatter gets one long-lived process for the whole session, so
+  its mode is decided once at session start rather than once per
+  invocation. The example uses an inline definition for this reason.
+  `README.md` does not state this constraint and must.
+
+**Rejected alternatives:**
+
+- **Delete the repository copy.** Rejected. This server's security
+  posture depends on how it is launched, so a worked example of a correct
+  launch is load-bearing documentation, not decoration. Deleting it
+  leaves a reader to infer the frontmatter shape and the env contract
+  from prose.
+- **Keep the repository copy as the live definition and have Agent OS
+  point at it.** Rejected. It couples the consuming project to a path in
+  this one, and the live definition needs real deployment paths and a
+  real token location, which are exactly the contents that must not be
+  published.
+
+**Resolved, previously open.** Whether the subagent frontmatter format the
+example uses is still current was verified against Anthropic's published
+Claude Code subagent documentation on 2026-09-15. The format holds:
+`mcpServers` takes a list whose entries are either an inline server
+definition keyed by server name or a bare string naming an
+already-configured server; inline definitions use the same schema as
+`.mcp.json` entries and support `stdio`; and both `tools` and
+`disallowedTools` accept server-level patterns such as `mcp__todoist__*`.
+This is a product convention rather than a specification, so it can change
+without notice and should be re-verified before publishing.
+
 ## 5. Invariants
 
 Each invariant below is a statement that should be mechanically checkable
@@ -267,7 +403,7 @@ tool-output assertion could not fail, which is why this column exists.
 | # | Invariant | Status | Evidence | Citation |
 |---|---|---|---|---|
 | 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **HOLDS** | **TESTED** (`find-projects`) / **INSPECTED** (six remaining read tools) | `test/mcp-e2e.test.js` — `'read tool output is framed and strips markup; token never leaks'`, which asserts the echoed project name matches exactly what `safeField` produces. Proven capable of failing by replacing `shapeProject`'s `safeField` call with `stripMarkup`, which failed this assertion alone. Proves `find-projects` routes through the framing helper; it does not prove the helper frames correctly, which is `test/sanitize.test.js`'s job. Remaining read tools covered by inspection of the shapers in `src/shape.js`. Behavior inventory §4–5, §8; review "Also checked" §3 |
-| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** | **TESTED** (`update-tasks`) / **INSPECTED** (four write tools framing an echoed field) / n/a (four echoing no Todoist-origin text, see AD-4) | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Not independently proven capable of failing during Session 9; it survived the `shapeProject` break unchanged, which is expected since that break touched only the read path |
+| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** | **TESTED** (`update-tasks`) / **INSPECTED** (four write tools framing an echoed field) / n/a (four echoing no Todoist-origin text, see AD-4) | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Proven capable of failing during Session 9 by replacing the `update-tasks` handler's `safeField(updated?.content, cfg.maxFieldChars)` call with `stripMarkup(updated?.content)`: the suite went to 71 of 72 with the failure confined to this test, and within it to the `safeField`-comparison assertion alone, while the three surrounding stripping assertions and the read-path framing test all stayed green. Reproducing this break requires widening the module's import to include `stripMarkup`. Without it the handler throws a `ReferenceError` that its own `try`/`catch` converts into an `isError` result, and the test fails on a different assertion for the wrong reason, which would look like confirmation while proving nothing. This assertion does not pin `cfg.maxFieldChars` plumbing; see section 8. |
 | 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | **UNGRADED** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
 | 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **HOLDS** | **UNGRADED** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption |
 | 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **HOLDS** | **UNGRADED** | `test/invariant5-redirect-ssrf.test.js` — the invariant is now satisfied by refusing all redirects rather than by re-validating redirect targets, so no second URL is ever contacted |
@@ -309,21 +445,38 @@ same call and that are not subject to `safeField` framing).
 | `find-labels` | R | `limit` | `id`, `name`✅, `color`, `is_favorite`, `order` |
 | `find-comments` | R | `task_id` XOR `project_id`, `limit` | `id`, `content`✅, `task_id`, `project_id`, `posted_at`, `attachment.file_name`✅ (URL/mime/size dropped) |
 | `get-overview` | R | *(none)* | `projects[].{id,name✅,is_inbox_project,active_task_count,sections[] (names✅)}`, `labels[]` (names✅ only, no ids), `totals.{projects,active_tasks,labels,due_today,overdue}` (all computed) |
-| `add-tasks` | W | `tasks[]`: `content`, `description`, `project_id`, `section_id`, `parent_id`, `labels[]`, `priority`, `due_string`/`due_date`/`due_datetime`, `deadline_date` | `id`, `content`❌ (unframed — but self-authored same call, per Finding 1 lower-risk case), `url`❌ |
-| `update-tasks` | W | `tasks[]`: `id`, `content`, `description`, `labels[]`, `priority`, `due_string`/`due_date`/`due_datetime`, `deadline_date` | `id`, `content`❌ **(unframed; reflects full current API state, not necessarily caller-supplied — Finding 1's critical case)** |
+| `add-tasks` | W | `tasks[]`: `content`, `description`, `project_id`, `section_id`, `parent_id`, `labels[]`, `priority`, `due_string`/`due_date`/`due_datetime`, `deadline_date` | `id`, `content`✅, `url` |
+| `update-tasks` | W | `tasks[]`: `id`, `content`, `description`, `labels[]`, `priority`, `due_string`/`due_date`/`due_datetime`, `deadline_date` | `id`, `content`✅ (reflects full current API state, not necessarily caller-supplied; `description` and `labels` are returned by the API and discarded rather than echoed) |
 | `complete-tasks` | W | `ids[]` | `ids[]` (caller-supplied, echoed back as-is, not from API) |
 | `uncomplete-tasks` | W | `ids[]` | `ids[]` (caller-supplied, echoed back as-is, not from API) |
 | `reschedule-tasks` | W | `tasks[]`: `id`, one of `due_string`/`due_date`/`due_datetime` | `id` only (caller-supplied; no content/text echoed) |
-| `add-comments` | W | `comments[]`: `content`, `task_id` XOR `project_id` | `id`❌ only (no content echoed) |
-| `add-projects` | W | `projects[]`: `name`, `parent_id`, `color`, `is_favorite`, `view_style` | `id`, `name`❌ (unframed) |
-| `add-sections` | W | `sections[]`: `name`, `project_id`, `order` | `id`, `name`❌ (unframed) |
-| `add-labels` | W | `labels[]`: `name`, `color`, `is_favorite`, `order` | `id`, `name`❌ (unframed) |
+| `add-comments` | W | `comments[]`: `content`, `task_id` XOR `project_id` | `id` only (no content echoed) |
+| `add-projects` | W | `projects[]`: `name`, `parent_id`, `color`, `is_favorite`, `view_style` | `id`, `name`✅ |
+| `add-sections` | W | `sections[]`: `name`, `project_id`, `order` | `id`, `name`✅ |
+| `add-labels` | W | `labels[]`: `name`, `color`, `is_favorite`, `order` | `id`, `name`✅ |
 
 ✅ = passed through `safeField` (framed, stripped, truncated).
-❌ = **not** passed through any sanitizer — raw `JSON.stringify` per Finding 1.
-The ❌ column is the injection surface Finding 1 identifies as critical,
-worst on `update-tasks` because that echoed `content` need not be anything
-the caller wrote in the same call.
+
+No mark on `id` = a structural field Todoist generates. No endpoint in the
+v1 API accepts a caller-supplied id, so nobody who can write task content
+can put chosen bytes in this field. Raw passthrough on both paths:
+`shapeTask` emits `id` unchanged, and so do the other shapers.
+
+No mark on `url` = a recorded exemption, not a structural guarantee. Raw
+passthrough in `shapeTask`, neither framed by `safeField` nor defanged by
+`defangUrl`, with `test/invariant4-todoist-allowlist.test.js` asserting it
+survives tool output intact. The exemption is safe only while Todoist
+returns a url built from the task id alone, and nothing in this server
+checks that it does. See D-5.
+
+Finding 1's injection surface is closed. Every echoed field originating
+as Todoist-writable text routes through `safeField` on both the read and
+the write path. This table previously marked five such fields as
+unsanitized; that was accurate to the pre-remediation code and stale as
+of Session 9, confirmed by reading `src/tools/write.js`. Section 9's
+live-API observation is unaffected: the API does return full current task
+state on a partial update, and `update-tasks` now frames the `content` it
+echoes and discards the `description` and `labels` it does not need.
 
 ## 7. Behavioral Requirements
 
@@ -441,9 +594,11 @@ judgment.
 
 ### Server lifecycle
 - R18. Read tools must register in every mode; write tools must register
-  only when `cfg.readOnly` is falsy, as an entirely separate registration
-  call (not a per-call runtime gate) — so in read-only mode, write tool
-  names are absent from the server, not merely disabled.
+  only when `cfg.readOnly` is falsy (config parsing resolves
+  `TODOIST_READONLY` to a boolean, so writes register only when that
+  boolean is `false`), as an entirely separate registration call (not a
+  per-call runtime gate) — so in read-only mode, write tool names are
+  absent from the server, not merely disabled.
 - R19. The forbidden-tool list (delete, reorder, assignment, workspace/
   analytics, reminders, filters) must never be registered in either mode.
 - R20. Config-load failure and any uncaught startup/runtime error must
@@ -564,6 +719,26 @@ Notes:
   function coverage** in the original baseline, the lowest of any file in
   `src/`. Any change to that file should raise, not lower, this figure.
 
+**DECIDED, Session 9.** A test fixture that sets a configuration value
+equal to the implementation's own fallback cannot detect that the value
+stopped being plumbed through. Demonstrated during Session 9: the
+`update-tasks` framing test in `test/mcp-e2e.test.js` sets
+`maxFieldChars: 2000`, and `safeField` falls back to `maxFieldChars ??
+2000`, so removing the `cfg.maxFieldChars` argument from the handler's
+`safeField` call left the suite green at 72 of 72. Both sides of the
+comparison moved together.
+
+Fix it as a bug class, not as one fixture. A later session must audit
+every fixture in `test/` for a configured value that collides with the
+implementation default, covering at least `maxFieldChars` (2000),
+`maxOutputChars` (50000) and `maxItems` (200), and change each colliding
+fixture to a value that diverges from its default.
+
+This is a test-evidence defect, not a code defect. The code is correct and
+Invariant 2 holds; what is missing is the suite's ability to notice one
+specific regression. It is recorded here rather than in section 10, which
+holds defects in the code, and it does not gate publishing.
+
 ## 9. Contract Test Methodology
 
 The project's standing rule is that a test is written before its
@@ -638,32 +813,32 @@ not ask for.
   documentation," which could not be substantiated. The premise now rests
   on direct observation rather than on documentation.
 
-### Open items raised during Session 8
+### Items raised during Session 8, both closed in Session 9
 
-These are observations, not decisions. Neither is resolved here.
-
-1. **`UNTRUSTED_NOTICE` scope is under-specified.** R25 states that every
-   READ-tool response is prefixed with `UNTRUSTED_NOTICE`. Invariant 2
-   states that write-tool responses receive the same framing and stripping
-   as read tools, but neither R25 nor Invariant 2 states that the notice
-   itself is prefixed to write-tool output. Observed directly during
-   Session 8: the `add-tasks` response carried the notice. So either R25 is
-   understated or the implemented behavior is broader than the spec
-   describes. This is a claims-accuracy question for Session 9 to resolve,
-   alongside the README and agent definition reconciliation.
+1. **`UNTRUSTED_NOTICE` scope.** R25 stated that every READ-tool response
+   is prefixed with `UNTRUSTED_NOTICE`, while Invariant 2 stated that
+   write-tool responses receive the same framing and stripping as read
+   tools without saying whether the notice itself reaches write output.
+   Observed directly during Session 8: the `add-tasks` response carried
+   the notice. **Closed.** R25 was understated, not wrong. The notice is
+   prepended unconditionally in `buildResult` to every response from all
+   sixteen tools. AD-4 records the decision and its accepted cost; R25 is
+   restated to match.
 2. **Tool output consumers may hold stale assumptions.** The
    `UNTRUSTED_NOTICE` prefix broke `scripts/live-smoke.js`, which had
    parsed tool output as bare JSON since before remediation. That script
-   has been fixed. The open question is whether anything else that
-   consumes this server's tool output makes the same assumption. That is
-   an Agent OS question, not one this repository can answer, and belongs
-   with the other Agent OS items already noted in `docs/RESUME.md`.
+   was fixed in Session 8. **Closed here as an Agent OS handoff.**
+   Whether anything else in Agent OS parses this server's tool output as
+   bare JSON is not a question this repository can answer and is not a
+   gate on work here. It is recorded with the other Agent OS items in
+   `docs/RESUME.md`.
 
 ## 10. Confirmed Defects, Scheduled
 
 Places where the code does not do what section 7 requires, or where it does
 something a caller would not reasonably expect from the tool's own
-description. These are distinct from the decisions recorded in section 4 and
+description, or where a control's correctness rests on an assumption about an
+external system that nothing verifies. These are distinct from the decisions recorded in section 4 and
 from the `DECIDED` entries in section 7: nothing here was chosen. Each was
 confirmed by reading the code during Session 9 and is scheduled rather than
 resolved.
@@ -742,6 +917,10 @@ Fixing one does not fix the other.
 - Behavior is defined for tasks with a floating due date versus a datetime
   carrying its own timezone.
 
+**Open:** how the timezone is supplied is not decided. An environment
+variable read once at startup and a per-request parameter have different
+consequences for a long-lived shared process. Decide before fixing.
+
 **Owner:** Session 10 or later. Gates publishing.
 
 ### D-3 — `find-tasks` advertises filters it silently discards
@@ -796,3 +975,65 @@ path.
   environment or the file.
 
 **Owner:** Session 10 or later. Does not gate publishing.
+
+### D-5 — The `url` passthrough assumes a structural format that nothing enforces or checks
+
+**Confirmed** by reading `src/shape.js` during Session 9, and by checking
+Todoist's published API documentation on 2026-09-15.
+
+`shapeTask` emits `url: t.url ?? null` as a raw passthrough. It is neither
+framed by `safeField` nor defanged by `defangUrl`, and
+`test/invariant4-todoist-allowlist.test.js` asserts that a real Todoist
+task url survives `find-tasks` output intact. The exemption is deliberate,
+recorded in AD-2, and tested to hold.
+
+What is not established is that the value arriving through that exemption
+is structural. The exemption is safe only while Todoist returns a url
+built from the task id alone. The v1 API documentation's example payload
+returns `https://app.todoist.com/app/task/6XR4GqQQCW6Gv9h4`, which is the
+bare id. But the same URL namespace carries a content-derived form: a task
+titled `arXiV : 202403190000 - 202403192359` produces
+`https://app.todoist.com/app/task/ar-xi-v-202403190000-202403192359-7814598409`,
+a slug built from the task's own title followed by the id. Task content is
+attacker-writable under section 2's threat model. The format has also
+changed more than once, from a query string
+(`https://todoist.com/showTask?id=999`) to numeric path ids to
+alphanumeric ids.
+
+Nothing in this server checks which form it received. If Todoist begins
+returning the slugged form from the API, attacker-influenced text reaches
+the agent inside a live, clickable, unframed URL, through the one field
+Invariant 4 does not cover, and no test fails.
+
+This is not a defect in today's behavior. It is a dependency on an
+external contract that is neither documented as stable nor verified at
+runtime, and it is the only place in this server where a security control
+rests on one.
+
+**Fix criteria:** in `shapeTask`, test the url against a structural
+pattern — host `app.todoist.com`, path `/app/task/` followed by an
+alphanumeric id and nothing further. A url that matches passes through
+intact, exactly as today. A url that does not match is routed through
+`safeField`, like every other untrusted value. If it is not the structural
+thing this server assumed, it is untrusted text, and untrusted text
+already has a handler. No behavior change while the assumption holds; when
+it stops holding, the agent gets a framed, defanged string instead of a
+live link.
+
+Three pieces of evidence, none sufficient alone:
+
+- A unit test covering both branches: a structural url survives intact, a
+  slugged one comes back framed. Verified per section 8's rule by planting
+  each value and confirming the assertion that should fail does.
+- `test/invariant4-todoist-allowlist.test.js` must still pass unchanged.
+  That is what proves the matching branch did not alter today's behavior.
+- A contract test in `test-contract/`, subject to section 9's
+  methodology, asserting the shape of the url the live API actually
+  returns. This is the only one of the three that can detect Todoist
+  changing. A unit test runs against a fixture this project chose and
+  stays green forever no matter what the API does.
+
+**Until this is fixed, nothing detects the change and nothing mitigates
+it.** A slugged url flows through `shapeTask` to the agent unframed and
+clickable, and no test goes red. That is the state today and it remains
+the state until the above is built.

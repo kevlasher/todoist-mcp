@@ -118,7 +118,7 @@ publishing.
   work and does not gate publishing.
 - **All ten remaining `[DECISION NEEDED]` items in section 7 resolved.**
   Six are decided inline. Four were not decisions at all but confirmed
-  defects, now in section 10 as D-1 through D-4. Zero markers remain.
+  defects, now in section 10 as D-1 through D-5. Zero markers remain.
 - **Claims analysis complete** for `README.md` and the agent definition.
   Findings are in section 6 below.
 
