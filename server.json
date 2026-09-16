@@ -1,0 +1,12 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.kevlasher/todoist-mcp",
+  "title": "Todoist (personal GTD)",
+  "description": "Hardened local-stdio MCP server for a single personal Todoist account, read-only by default.",
+  "version": "0.1.0",
+  "websiteUrl": "https://github.com/kevlasher/todoist-mcp#readme",
+  "repository": {
+    "url": "https://github.com/kevlasher/todoist-mcp",
+    "source": "github"
+  }
+}
