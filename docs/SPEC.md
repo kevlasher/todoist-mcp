@@ -323,7 +323,7 @@ endpoint path to the new location, not to start following redirects.
   running agent's mode.
 - The example must remain honest about the server's actual behavior, not
   merely non-personal. It names real environment variables and real tool
-  names, and it carries agent-facing warnings for D-1, D-2, and D-3.
+  names, and it carries agent-facing warnings for D-1, D-2, D-3 and D-5.
   Those warnings are part of each defect's fix criteria: when a defect in
   section 10 is fixed, removing its warning from the example is part of
   fixing it.
