@@ -216,7 +216,8 @@ src/
   tools/write.js  the 9 write tools (registered only when writes are enabled)
 scripts/
   stdio-check.js  list tools from a real spawned process
-  live-smoke.js   live write round-trip (needs a real token; account-guarded)
+  live-smoke.js   live write round-trip (needs TODOIST_CONTRACT_TEST_TOKEN and
+                  TODOIST_CONTRACT_TEST_ACCOUNT_ID; refuses any other account)
 test/             offline test suite
 test-contract/    live-API contract tests (token-gated, account-guarded, excluded from npm test)
 docs/
