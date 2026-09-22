@@ -6,9 +6,15 @@ last several sessions, start here.
 `docs/SPEC.md` is the source of truth for invariants, decisions, and known
 defects. This note is a pointer to it, not a substitute.
 
+This file is an internal working document, not published documentation.
+The personal deployment paths in section 2 are deliberate and stay; they
+help whoever resumes this work find the right directories on this
+machine.
+
 ## 1. Where things stand
 
-- Branch: `remediation/audit-2026-08`.
+- Branch: `main`, which now matches `remediation/audit-2026-08` and is
+  pushed to `origin`.
 - Tests: 72/72 passing.
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
 - Sessions 1 through 8 are complete. Session 9 is partially complete and
@@ -17,8 +23,7 @@ defects. This note is a pointer to it, not a substitute.
   AD-1 (mode selection belongs to the agent layer), AD-2 (URLs defanged,
   not deleted), AD-3 (all redirects refused), AD-4 (the untrusted-content
   notice is unconditional), AD-5 (the agent definition in this repo is an
-  example, not the live one). AD-5 was accepted but is NOT yet written
-  into the file. See section 5 below.
+  example, not the live one). All five are written into the file.
 
 Before doing anything else, confirm the working tree is clean and that the
 Session 9 spec commits actually landed:
@@ -27,9 +32,8 @@ Session 9 spec commits actually landed:
     git status --short
     git log --oneline -6
 
-The last commit hash known at the time of writing is `adf414a`, the
-read-tool framing fix. Commits after it cover the confounded-assertion
-removal, the framing tripwire, and two spec commits.
+The last commit hash known at the time of writing is `8d4387f`, which adds
+`server.json` and sets the version to `0.1.0`.
 
 ## 2. The two copies, and how to tell them apart
 
@@ -50,12 +54,18 @@ redeployed. Its `README.md` is still the old July version.
 
 Deployment is a manual file copy. Nothing propagates automatically.
 
-There is a second, smaller instance of the same problem. An agent
-definition exists at both `.claude/agents/todoist.md` in this repo and
-`/workspace/projects/agent-os/.claude/agents/todoist.md`. As of Session 9
-the two files are byte-identical and neither has been edited since July
-21. AD-5 resolves this: the repo copy becomes a labeled example with
-placeholder paths, and the live definition lives in the consuming project.
+There was a second, smaller instance of the same problem. An agent
+definition existed at both `.claude/agents/todoist.md` in this repo and
+`/workspace/projects/agent-os/.claude/agents/todoist.md`, byte-identical
+and unedited since July 21. AD-5 resolves this and is now written into
+`docs/SPEC.md` section 4. The repo copy is a labeled example at
+`docs/examples/todoist-subagent.md`, with an explanatory
+`docs/examples/README.md` beside it; it uses placeholder paths, carries
+no personal identifiers, and launches read-only by omitting
+`TODOIST_READONLY` entirely rather than setting it to `"true"`.
+`.claude/agents/todoist.md` no longer exists in this repo. The live
+definition remains in whatever project consumes this server, outside
+this repo's scope.
 
 ## 3. Deployment procedure
 
@@ -118,32 +128,26 @@ publishing.
   work and does not gate publishing.
 - **All ten remaining `[DECISION NEEDED]` items in section 7 resolved.**
   Six are decided inline. Four were not decisions at all but confirmed
-  defects, now in section 10 as D-1 through D-5. Zero markers remain.
+  defects, now in section 10 as D-1 through D-4. Zero markers remain.
+  D-5 was also recorded in section 10 during Session 9, but from a
+  different source: it came from reading `src/shape.js` directly, not
+  from resolving a `[DECISION NEEDED]` item in section 7.
 - **Claims analysis complete** for `README.md` and the agent definition.
   Findings are in section 6 below.
-
-### Decided but not yet written
-
-These were agreed in the Session 9 chat and have no artifact in the repo
-yet. Doing them is the first task on resuming.
-
-- **AD-5** into `docs/SPEC.md` section 4.
-- **The example agent definition** replacing `.claude/agents/todoist.md`.
-  It launches read-only (omitting `TODOIST_READONLY` entirely, to
-  demonstrate the fail-safe default), uses placeholder paths, carries no
-  personal identifiers, and includes agent-facing warnings about D-1,
-  D-2, and D-3. Full draft text is in the Session 9 chat.
-- **`server.json`**, the client-agnostic server description used for
-  registry publishing and client discovery. Adding the file was agreed.
-  Publishing to the MCP Registry was explicitly deferred. Pull the current
-  schema when writing it; it has been revised more than once and the
-  naming convention changed.
-- **`package.json` version** from `1.0.0` to `0.1.0`. The current number
-  claims a stability this does not have while D-1 through D-4 are open.
-- **Close the Session 8 open items** in `docs/SPEC.md` section 9. Both are
-  resolved but still presented as open. Item 1 (UNTRUSTED_NOTICE scope) is
-  answered by AD-4. Item 2 (whether other consumers parse tool output as
-  bare JSON) is recorded as an Agent OS handoff and closed here.
+- **AD-5 is written into `docs/SPEC.md` section 4.**
+- **The example agent definition now lives at
+  `docs/examples/todoist-subagent.md` with an explanatory
+  `docs/examples/README.md` beside it.** It is no longer at
+  `.claude/agents/todoist.md`, which no longer exists in this repo.
+- **`server.json` exists at the repo root**, using the 2025-12-11 registry
+  schema, named `io.github.kevlasher/todoist-mcp`. Publishing to the MCP
+  Registry remains deferred.
+- **`package.json` version changed from `1.0.0` to `0.1.0`**, agreeing
+  with `server.json`.
+- **The Session 8 open items in `docs/SPEC.md` section 9 are closed.**
+  Item 1 (`UNTRUSTED_NOTICE` scope) is answered by AD-4. Item 2 (whether
+  other consumers parse tool output as bare JSON) is recorded as an
+  Agent OS handoff and closed there.
 
 ### Remaining
 
@@ -190,24 +194,43 @@ Missing:
 
 Also:
 
-- Personal deployment paths appear in the credential-storage commands and
-  in the agent definition. They do not belong in a published repo.
+- Personal deployment paths appear in the credential-storage commands in
+  `README.md` and in the example agent definition. Both are published, so
+  the paths do not belong there. This does not apply to `docs/RESUME.md`,
+  which is an internal working document, not published documentation (see
+  the note at the top of that file).
 - The spec's control numbering and the README's control numbering do not
   match. "Control #6" means the nonexistent two-agent confirmation gate in
   one and env-gated read-only in the other. The README never claimed a
   confirmation gate; that claim lived in the security review's list.
-- Before publishing, verify the Claude Code subagent frontmatter format is
-  still current. The file was written in July and the format is a product
-  convention, not a spec.
+- The Claude Code subagent frontmatter format has been verified, not left
+  as an open task. The frontmatter schema itself (`mcpServers` list
+  entries, inline vs. bare-string form, `tools`/`disallowedTools`
+  server-level patterns) was checked against Anthropic's published
+  subagent documentation on 2026-09-15 (AD-5, `docs/SPEC.md`). The two
+  runtime behaviors the example depends on — folder-trust gating on
+  inline servers, and inline vs. by-name connection lifetime — were
+  checked the following day, 2026-09-16 (`docs/examples/README.md`). Both
+  are product conventions rather than a specification, so either can
+  change without notice and is worth re-checking again before
+  publishing.
 
 ## 7. Session 10 and beyond
 
-Section 10 of `docs/SPEC.md` holds D-1 through D-4 with fix criteria.
+Section 10 of `docs/SPEC.md` holds D-1 through D-5 with fix criteria.
 D-1 is the significant one and is the reason section 10 exists: every
 count `get-overview` returns is derived from fetches capped at
 `TODOIST_MAX_ITEMS`, so an account with more than 200 active tasks gets
 wrong counts, and the four `truncated` flags that would signal this are
-discarded in favour of an unconditional note.
+discarded in favour of an unconditional note. D-2 carries an open
+decision that must be made before it can be fixed: how the timezone used
+for "today" is supplied is not decided — an environment variable read
+once at startup and a per-request parameter have different consequences
+for a long-lived shared process. D-5 is a dependency risk, not a live
+defect: the `url` passthrough exemption is safe only while Todoist
+returns a url built from the task id alone, and nothing in this server
+checks that assumption or would catch it if Todoist began returning a
+content-derived slugged form instead.
 
 Also scheduled, recorded as DECIDED entries in section 7 rather than as
 defects:
@@ -222,6 +245,21 @@ defects:
   different handling, since Todoist interprets it.
 - Partial-success reporting on multi-item writes. No automatic retry:
   these writes are not idempotent and retrying risks duplicates.
+
+Also scheduled, but recorded as a DECIDED entry at the end of
+`docs/SPEC.md` section 8, not section 7, because it is a test-evidence
+defect rather than a code defect:
+
+- The fixture-default collision audit. A test fixture that sets a
+  configuration value equal to the implementation's own fallback cannot
+  detect that the value stopped being plumbed through — demonstrated when
+  a fixture setting `maxFieldChars: 2000` stayed green even after the
+  handler's `cfg.maxFieldChars` argument was removed, because `safeField`
+  falls back to the same 2000. A later session must audit every fixture
+  in `test/` for a configured value that collides with its implementation
+  default (`maxFieldChars` 2000, `maxOutputChars` 50000, `maxItems` 200)
+  and change each colliding fixture to a value that diverges from its
+  default.
 
 Tracked elsewhere, not in this repo: per-request read/write mode selection
 (AD-1), whether two copies of this server should exist, and whether
