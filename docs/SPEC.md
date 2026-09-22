@@ -1020,20 +1020,30 @@ already has a handler. No behavior change while the assumption holds; when
 it stops holding, the agent gets a framed, defanged string instead of a
 live link.
 
-Three pieces of evidence, none sufficient alone:
+Two pieces of evidence:
 
 - A unit test covering both branches: a structural url survives intact, a
   slugged one comes back framed. Verified per section 8's rule by planting
   each value and confirming the assertion that should fail does.
 - `test/invariant4-todoist-allowlist.test.js` must still pass unchanged.
   That is what proves the matching branch did not alter today's behavior.
-- A contract test in `test-contract/`, subject to section 9's
-  methodology, asserting the shape of the url the live API actually
-  returns. This is the only one of the three that can detect Todoist
-  changing. A unit test runs against a fixture this project chose and
-  stays green forever no matter what the API does.
+
+A contract test in `test-contract/`, subject to section 9's methodology
+and asserting the shape of the url the live API actually returns, was
+considered and deliberately dropped rather than omitted by oversight. It
+would have been the only piece of evidence able to detect Todoist changing
+the format before a real request hits it — a unit test runs against a
+fixture this project chose and stays green forever no matter what the API
+does. But it only reports on the day someone happens to run it, and
+standing up a schedule to run it regularly is infrastructure not worth
+building for a change that may never come. `README.md`'s Known defects
+entry for D-5 carries a disclosure note in its place instead.
 
 **Until this is fixed, nothing detects the change and nothing mitigates
 it.** A slugged url flows through `shapeTask` to the agent unframed and
 clickable, and no test goes red. That is the state today and it remains
 the state until the above is built.
+
+**Owner:** Session 10, first — ahead of D-1 through D-4. It is the only
+entry in this section whose failure mode is silent: no error, no failing
+test. Does not gate publishing.
