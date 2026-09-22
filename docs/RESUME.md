@@ -6,6 +6,11 @@ last several sessions, start here.
 `docs/SPEC.md` is the source of truth for invariants, decisions, and known
 defects. This note is a pointer to it, not a substitute.
 
+This file is an internal working document, not published documentation.
+The personal deployment paths in section 2 are deliberate and stay; they
+help whoever resumes this work find the right directories on this
+machine.
+
 ## 1. Where things stand
 
 - Branch: `main`, which now matches `remediation/audit-2026-08` and is
@@ -18,8 +23,7 @@ defects. This note is a pointer to it, not a substitute.
   AD-1 (mode selection belongs to the agent layer), AD-2 (URLs defanged,
   not deleted), AD-3 (all redirects refused), AD-4 (the untrusted-content
   notice is unconditional), AD-5 (the agent definition in this repo is an
-  example, not the live one). AD-5 was accepted but is NOT yet written
-  into the file. See section 5 below.
+  example, not the live one). All five are written into the file.
 
 Before doing anything else, confirm the working tree is clean and that the
 Session 9 spec commits actually landed:
@@ -124,7 +128,10 @@ publishing.
   work and does not gate publishing.
 - **All ten remaining `[DECISION NEEDED]` items in section 7 resolved.**
   Six are decided inline. Four were not decisions at all but confirmed
-  defects, now in section 10 as D-1 through D-5. Zero markers remain.
+  defects, now in section 10 as D-1 through D-4. Zero markers remain.
+  D-5 was also recorded in section 10 during Session 9, but from a
+  different source: it came from reading `src/shape.js` directly, not
+  from resolving a `[DECISION NEEDED]` item in section 7.
 - **Claims analysis complete** for `README.md` and the agent definition.
   Findings are in section 6 below.
 - **AD-5 is written into `docs/SPEC.md` section 4.**
@@ -137,16 +144,10 @@ publishing.
   Registry remains deferred.
 - **`package.json` version changed from `1.0.0` to `0.1.0`**, agreeing
   with `server.json`.
-
-### Decided but not yet written
-
-These were agreed in the Session 9 chat and have no artifact in the repo
-yet. Doing them is the first task on resuming.
-
-- **Close the Session 8 open items** in `docs/SPEC.md` section 9. Both are
-  resolved but still presented as open. Item 1 (UNTRUSTED_NOTICE scope) is
-  answered by AD-4. Item 2 (whether other consumers parse tool output as
-  bare JSON) is recorded as an Agent OS handoff and closed here.
+- **The Session 8 open items in `docs/SPEC.md` section 9 are closed.**
+  Item 1 (`UNTRUSTED_NOTICE` scope) is answered by AD-4. Item 2 (whether
+  other consumers parse tool output as bare JSON) is recorded as an
+  Agent OS handoff and closed there.
 
 ### Remaining
 
@@ -193,8 +194,11 @@ Missing:
 
 Also:
 
-- Personal deployment paths appear in the credential-storage commands and
-  in the agent definition. They do not belong in a published repo.
+- Personal deployment paths appear in the credential-storage commands in
+  `README.md` and in the example agent definition. Both are published, so
+  the paths do not belong there. This does not apply to `docs/RESUME.md`,
+  which is an internal working document, not published documentation (see
+  the note at the top of that file).
 - The spec's control numbering and the README's control numbering do not
   match. "Control #6" means the nonexistent two-agent confirmation gate in
   one and env-gated read-only in the other. The README never claimed a
@@ -210,11 +214,15 @@ D-1 is the significant one and is the reason section 10 exists: every
 count `get-overview` returns is derived from fetches capped at
 `TODOIST_MAX_ITEMS`, so an account with more than 200 active tasks gets
 wrong counts, and the four `truncated` flags that would signal this are
-discarded in favour of an unconditional note. D-5 is a dependency risk,
-not a live defect: the `url` passthrough exemption is safe only while
-Todoist returns a url built from the task id alone, and nothing in this
-server checks that assumption or would catch it if Todoist began
-returning a content-derived slugged form instead.
+discarded in favour of an unconditional note. D-2 carries an open
+decision that must be made before it can be fixed: how the timezone used
+for "today" is supplied is not decided — an environment variable read
+once at startup and a per-request parameter have different consequences
+for a long-lived shared process. D-5 is a dependency risk, not a live
+defect: the `url` passthrough exemption is safe only while Todoist
+returns a url built from the task id alone, and nothing in this server
+checks that assumption or would catch it if Todoist began returning a
+content-derived slugged form instead.
 
 Also scheduled, recorded as DECIDED entries in section 7 rather than as
 defects:
@@ -229,6 +237,21 @@ defects:
   different handling, since Todoist interprets it.
 - Partial-success reporting on multi-item writes. No automatic retry:
   these writes are not idempotent and retrying risks duplicates.
+
+Also scheduled, but recorded as a DECIDED entry at the end of
+`docs/SPEC.md` section 8, not section 7, because it is a test-evidence
+defect rather than a code defect:
+
+- The fixture-default collision audit. A test fixture that sets a
+  configuration value equal to the implementation's own fallback cannot
+  detect that the value stopped being plumbed through — demonstrated when
+  a fixture setting `maxFieldChars: 2000` stayed green even after the
+  handler's `cfg.maxFieldChars` argument was removed, because `safeField`
+  falls back to the same 2000. A later session must audit every fixture
+  in `test/` for a configured value that collides with its implementation
+  default (`maxFieldChars` 2000, `maxOutputChars` 50000, `maxItems` 200)
+  and change each colliding fixture to a value that diverges from its
+  default.
 
 Tracked elsewhere, not in this repo: per-request read/write mode selection
 (AD-1), whether two copies of this server should exist, and whether
