@@ -17,23 +17,33 @@ machine.
   pushed to `origin`.
 - Tests: 72/72 passing.
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 8 are complete. Session 9 is partially complete and
-  is the one to resume.
+- Sessions 1 through 9 are complete. **Resume at Session 10** — see
+  section 7.
 - Five architecture decisions recorded in `docs/SPEC.md` section 4:
   AD-1 (mode selection belongs to the agent layer), AD-2 (URLs defanged,
   not deleted), AD-3 (all redirects refused), AD-4 (the untrusted-content
   notice is unconditional), AD-5 (the agent definition in this repo is an
   example, not the live one). All five are written into the file.
 
-Before doing anything else, confirm the working tree is clean and that the
-Session 9 spec commits actually landed:
+Before doing anything else, confirm you're actually caught up rather than
+resuming stale state. A pinned commit hash drifts the moment anyone
+commits, so check content instead of a hash:
 
     cd /workspace/projects/Todoist-MCP
     git status --short
-    git log --oneline -6
 
-The last commit hash known at the time of writing is `8d4387f`, which adds
-`server.json` and sets the version to `0.1.0`.
+- `git status --short` should print nothing.
+- `docs/SPEC.md`'s Decision log (top of the file) should have a row for
+  Session 9. If it doesn't, the Session 9 commits haven't landed on this
+  branch.
+- Section 5 below should read "Session 9: closed." If it instead lists
+  open "Remaining" work, you're looking at an older copy of this file.
+- Section 6 below should read as a closure note, a few sentences, not an
+  itemized claims list. If it's an itemized list, the README rewrite this
+  file assumes happened hasn't happened on this branch.
+
+Any of those failing means: stop, reconcile with `origin`, and don't trust
+the rest of this file until they pass.
 
 ## 2. The two copies, and how to tell them apart
 
@@ -50,7 +60,9 @@ Rule of thumb: **git means work, token means deployed.**
 
 The deployed copy now runs the remediated code. Only `src/` was copied.
 Its stale `scripts/` directory was deleted and is deliberately not
-redeployed. Its `README.md` is still the old July version.
+redeployed. Its `README.md` is stale, still the old July version, and
+that is deliberate: nothing reads it, it isn't published, and no future
+session should treat updating it as work.
 
 Deployment is a manual file copy. Nothing propagates automatically.
 
@@ -94,11 +106,12 @@ guarded. Know about them before running anything.
 
 `npm test` runs neither. It is `node --test test/` and is fully offline.
 
-`README.md` still documents `npm run smoke` as something to run against a
-real account, with no mention of the guard. That is one of the README
-corrections listed below.
+`README.md` now documents `npm run smoke`'s account guard correctly, and
+covers `test-contract/` in both its Tests section and its Layout block.
+That was open work as of Session 9; it closed when README.md was
+rewritten (see section 5).
 
-## 5. Session 9: what is done and what remains
+## 5. Session 9: closed
 
 Objective: reconcile `README.md` and the agent definition with what AD-1
 established, and resolve the open items and deferred decisions that gate
@@ -126,14 +139,16 @@ publishing.
   and 2 are graded. Invariants 3 through 12 are UNGRADED, meaning nobody
   has checked their evidence, not that it is weak. Grading them is tracked
   work and does not gate publishing.
-- **All ten remaining `[DECISION NEEDED]` items in section 7 resolved.**
-  Six are decided inline. Four were not decisions at all but confirmed
+- **All eleven `[DECISION NEEDED]` items in section 7 resolved.** Seven
+  were decided inline. Four were not decisions at all but confirmed
   defects, now in section 10 as D-1 through D-4. Zero markers remain.
-  D-5 was also recorded in section 10 during Session 9, but from a
-  different source: it came from reading `src/shape.js` directly, not
-  from resolving a `[DECISION NEEDED]` item in section 7.
+  (An earlier version of this note said "ten" and "six" — recounted
+  directly against the pre-Session-9 commit; the correct totals are eleven
+  and seven.) D-5 was also recorded in section 10 during Session 9, but
+  from a different source: it came from reading `src/shape.js` directly,
+  not from resolving a `[DECISION NEEDED]` item in section 7.
 - **Claims analysis complete** for `README.md` and the agent definition.
-  Findings are in section 6 below.
+  The claims list itself has since been retired — see section 6.
 - **AD-5 is written into `docs/SPEC.md` section 4.**
 - **The example agent definition now lives at
   `docs/examples/todoist-subagent.md` with an explanatory
@@ -148,89 +163,84 @@ publishing.
   Item 1 (`UNTRUSTED_NOTICE` scope) is answered by AD-4. Item 2 (whether
   other consumers parse tool output as bare JSON) is recorded as an
   Agent OS handoff and closed there.
+- **`README.md` rewritten** against the claims list that was in section 6,
+  and merged (PR #1: `b376373`, `45dc2af`; follow-up fixes in PR #2:
+  `b9c570b`). Verified directly against the live file: every False,
+  Understated, Missing, and Also item the claims list raised is addressed
+  in the current README.
+- **This file rewritten** to close out Session 9 and hand off cleanly to
+  Session 10.
 
-### Remaining
+Both items previously listed under "Remaining" are done. Session 9 has no
+open items.
 
-- **Rewrite `README.md`** against the claims list in section 6.
-- **Rewrite this file** once the above is done.
+## 6. README and agent-definition claims — resolved
 
-## 6. README and agent-definition claims to correct
+Session 9 produced a claims list here (False / Understated / Missing /
+Also-broken items found by comparing `README.md` and the agent definition
+against `docs/SPEC.md`). That list was the direct input to the README
+rewrite referenced in section 5. It has been verified, item by item,
+against the current `README.md` and found fully addressed: nothing on it
+describes the published README any longer.
 
-False:
-
-- The Tests section tells the reader to run `npm run smoke` against their
-  real account. The account guard makes this wrong and the guard is not
-  mentioned at all.
-- The `find-tasks` table row says it "also narrows by" `project_id`,
-  `section_id`, `label`, `parent_id`, and `ids`. When `query` is supplied
-  those are never sent. This is D-3.
-- The credential-constraint section calls server-layer enforcement strong
-  because it "holds regardless of harness behavior." It does not, and the
-  README contradicts this two sections later. The launching environment
-  decides the mode. That is AD-1.
-- The `get-overview` row describes per-project and due-today counts
-  without qualification. D-1 and D-2 both apply.
-
-Understated, in the same way R25 was:
-
-- The notice is described as leading every read result. It is on every
-  result from all sixteen tools.
-- Output-size capping is described as applying to read tools. It applies
-  to every response.
-- Framing is described as read-path only. Write-tool echoed fields are
-  framed too (Invariant 2).
-
-Missing:
-
-- AD-3. Nothing says all redirects are refused outright, or that
-  endpoints will start failing if Todoist ever introduces one.
-- AD-2. Nothing says URLs come back defanged rather than removed.
-- `test-contract/` appears nowhere, neither in Tests nor in Layout.
-- The Layout block omits `test-contract/` and `docs/`.
-- Nothing states that the read-only design assumes each invocation gets
-  its own process. A client that launches one long-lived shared server
-  gets one mode for the whole session. This is a real constraint on what
-  the security posture means and is currently unstated.
-
-Also:
-
-- Personal deployment paths appear in the credential-storage commands in
-  `README.md` and in the example agent definition. Both are published, so
-  the paths do not belong there. This does not apply to `docs/RESUME.md`,
-  which is an internal working document, not published documentation (see
-  the note at the top of that file).
-- The spec's control numbering and the README's control numbering do not
-  match. "Control #6" means the nonexistent two-agent confirmation gate in
-  one and env-gated read-only in the other. The README never claimed a
-  confirmation gate; that claim lived in the security review's list.
-- The Claude Code subagent frontmatter format has been verified, not left
-  as an open task. The frontmatter schema itself (`mcpServers` list
-  entries, inline vs. bare-string form, `tools`/`disallowedTools`
-  server-level patterns) was checked against Anthropic's published
-  subagent documentation on 2026-09-15 (AD-5, `docs/SPEC.md`). The two
-  runtime behaviors the example depends on — folder-trust gating on
-  inline servers, and inline vs. by-name connection lifetime — were
-  checked the following day, 2026-09-16 (`docs/examples/README.md`). Both
-  are product conventions rather than a specification, so either can
-  change without notice and is worth re-checking again before
-  publishing.
+The itemized list is deliberately not kept here. A stale claims list that
+still reads like an open defect report is worse than no list — it invites
+a future reader to mistake pre-rewrite README text for current text. If
+README drift is suspected later, re-diff `README.md` against `docs/SPEC.md`
+directly; don't try to revive this one.
 
 ## 7. Session 10 and beyond
 
 Section 10 of `docs/SPEC.md` holds D-1 through D-5 with fix criteria.
-D-1 is the significant one and is the reason section 10 exists: every
-count `get-overview` returns is derived from fetches capped at
+They don't all gate publishing:
+
+- **Gates publishing:** D-1, D-2, D-3.
+- **Does not gate publishing:** D-4, D-5.
+
+**Do D-5 first, out of gating order.** Three decisions were made after the
+Session 9 claims analysis, specifically about D-5. They are not yet
+written into `docs/SPEC.md` section 10 — that edit, and a related
+`README.md` note, are separate tasks, not done as part of this file:
+
+- D-5 does not gate publishing. Nothing is wrong in today's behavior, and
+  `README.md` already discloses the exemption.
+- It is sequenced first in Session 10 anyway, ahead of D-1, because it is
+  the only one of the five whose failure mode is silent. D-1 through D-4
+  are all either already visibly wrong or fail loudly; D-5 would not.
+- Its fix scope is reduced from what section 10 currently describes.
+  Build only the `shapeTask` structural-format check and an offline unit
+  test covering both branches (a structural url survives intact, a
+  slugged one comes back framed). The live-API contract test that section
+  10 lists as a third piece of evidence is deliberately dropped — it only
+  reports on the day someone runs it, and standing up a schedule to run
+  it is infrastructure not worth building for a change that may never
+  come. In its place, `README.md` will carry a note disclosing that
+  Todoist could change this url format and what happens if it does.
+
+  **Caveat:** `docs/SPEC.md` section 10's D-5 entry still names the
+  contract test as required, as of this writing. That text hasn't been
+  updated to match the reduced scope above — that update is one of the
+  separate tasks noted. Until it lands, treat this section's description
+  of D-5's scope as current, not section 10's.
+
+D-1 is next, and remains the most significant gating defect: every count
+`get-overview` returns is derived from fetches capped at
 `TODOIST_MAX_ITEMS`, so an account with more than 200 active tasks gets
 wrong counts, and the four `truncated` flags that would signal this are
-discarded in favour of an unconditional note. D-2 carries an open
-decision that must be made before it can be fixed: how the timezone used
-for "today" is supplied is not decided — an environment variable read
-once at startup and a per-request parameter have different consequences
-for a long-lived shared process. D-5 is a dependency risk, not a live
-defect: the `url` passthrough exemption is safe only while Todoist
-returns a url built from the task id alone, and nothing in this server
-checks that assumption or would catch it if Todoist began returning a
-content-derived slugged form instead.
+discarded in favour of an unconditional note. D-2 carries an open decision
+that must be made before it can be fixed: how the timezone used for
+"today" is supplied is not decided — an environment variable read once at
+startup and a per-request parameter have different consequences for a
+long-lived shared process. D-3 is the smallest gating item: `find-tasks`
+advertises `project_id`/`section_id`/`label`/`parent_id`/`ids` as
+narrowing filters that a `query` argument silently discards; the fix is
+description text only, not a behavior change.
+
+D-4 does not gate publishing: token-source error messages name the wrong
+environment variable in some cases (an operator who configured
+`TODOIST_API_KEY_FILE` correctly, with an empty file, is told to set
+`TODOIST_API_KEY` instead). Worth doing alongside the others in Session 10
+since it's already scoped, but nothing blocks on it.
 
 Also scheduled, recorded as DECIDED entries in section 7 rather than as
 defects:
