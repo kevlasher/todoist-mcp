@@ -203,9 +203,17 @@ Also:
   match. "Control #6" means the nonexistent two-agent confirmation gate in
   one and env-gated read-only in the other. The README never claimed a
   confirmation gate; that claim lived in the security review's list.
-- Before publishing, verify the Claude Code subagent frontmatter format is
-  still current. The file was written in July and the format is a product
-  convention, not a spec.
+- The Claude Code subagent frontmatter format has been verified, not left
+  as an open task. The frontmatter schema itself (`mcpServers` list
+  entries, inline vs. bare-string form, `tools`/`disallowedTools`
+  server-level patterns) was checked against Anthropic's published
+  subagent documentation on 2026-09-15 (AD-5, `docs/SPEC.md`). The two
+  runtime behaviors the example depends on — folder-trust gating on
+  inline servers, and inline vs. by-name connection lifetime — were
+  checked the following day, 2026-09-16 (`docs/examples/README.md`). Both
+  are product conventions rather than a specification, so either can
+  change without notice and is worth re-checking again before
+  publishing.
 
 ## 7. Session 10 and beyond
 
