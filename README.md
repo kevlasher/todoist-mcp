@@ -110,14 +110,14 @@ These aren't gaps scheduled to close — they're inherent to what a tool-registr
 
 ## Known defects
 
-Four defects are currently open. Each is qualified above, next to the tool it affects; they're named again here, together, because an agent or operator shouldn't have to go find `docs/SPEC.md` to learn that output can be wrong in these specific, known ways. Full root cause and fix criteria for each live in `docs/SPEC.md` section 10.
+Three defects are open in today's behavior — D-1, D-2, D-3 — each already qualified above, next to the tool it affects. `docs/SPEC.md` section 10 groups a fourth item, D-5, alongside them, but D-5 is a different kind of thing: not a defect in current behavior, but an unverified dependency a security control rests on. All are named again here, together, because an agent or operator shouldn't have to go find `docs/SPEC.md` to learn what's actually wrong versus merely assumed. Full root cause and fix criteria for each live in `docs/SPEC.md` section 10.
 
 - **D-1 — `get-overview` counts can be wrong, not just incomplete.** Derived from fetches capped at `TODOIST_MAX_ITEMS` (default 200); accounts with more active tasks than that get undercounts with no signal distinguishing them from correct ones.
 - **D-2 — `get-overview` computes "today" in UTC on the server host,** not in any particular user's timezone, misclassifying tasks near the date boundary.
 - **D-3 — `find-tasks` silently discards its other filters when `query` is supplied.** `project_id`, `section_id`, `label`, `parent_id`, and `ids` are accepted alongside `query` but never sent and never take effect.
-- **D-5 — a task's `url` field is a raw passthrough,** never framed or defanged like every other untrusted value, on the assumption that Todoist always builds it from the task id alone. Nothing in this server checks that assumption, and Todoist's URL namespace has at least one other form that embeds the task's own, attacker-writable title.
+- **D-5 — not a defect in today's behavior, but an unverified dependency.** A task's `url` field is a raw passthrough, never framed or defanged like every other untrusted value, on the assumption that Todoist always builds it from the task id alone. That assumption holds today and is tested to hold; nothing in this server checks it at runtime, though, and Todoist's URL namespace has at least one other documented form that embeds the task's own, attacker-writable title. If that assumption stops holding, nothing here would catch it.
 
-A fifth defect, D-4, is a startup configuration error message that names the wrong environment variable in some cases — it's noted under Configuration below rather than here, since it affects an operator's setup error, not tool output an agent or caller ever sees.
+A fifth item, D-4, is a startup configuration error message that names the wrong environment variable in some cases — it's noted under Configuration below rather than here, since it affects an operator's setup error, not tool output an agent or caller ever sees.
 
 ---
 
@@ -172,22 +172,23 @@ The server speaks MCP over **stdio**. Running it directly like this is mainly fo
 
 ```bash
 npm test                 # offline suite — registration, config, sanitize, redact, client/SSRF, MCP e2e
+
+# real spawned-process check (offline: fake token, tools/list makes no network call)
+TODOIST_READONLY=true  node scripts/stdio-check.js
+TODOIST_READONLY=false node scripts/stdio-check.js
 ```
 
-`npm test` runs `node --test test/` and never touches the network.
+`npm test` runs `node --test test/` and never touches the network. `scripts/stdio-check.js` doesn't either — it boots the real server process (`src/index.js`) over stdio with a fake token and lists which tools registered, to confirm the read-only vs. read/write split against an actually spawned process rather than the in-process test harness.
 
 Two further layers do touch a live account, and both are guarded against writing to the wrong one:
 
 ```bash
-# real spawned-process checks (fake token; tools/list makes no network call)
-TODOIST_READONLY=true  node scripts/stdio-check.js
-TODOIST_READONLY=false node scripts/stdio-check.js
-
-# live write round-trip against a real account
-TODOIST_API_KEY=... TODOIST_READONLY=false npm run smoke
+# live write round-trip against the verified contract test account
+TODOIST_CONTRACT_TEST_TOKEN=xxxxx TODOIST_CONTRACT_TEST_ACCOUNT_ID=yyyyy \
+  TODOIST_READONLY=false node scripts/live-smoke.js
 ```
 
-`npm run smoke` (`scripts/live-smoke.js`) performs a real add / read-back / complete round-trip. It checks the supplied token against a designated account before writing anything and refuses to run against any other account — point it at a throwaway or test account's token, never a production one.
+`scripts/live-smoke.js` (also runnable as `npm run smoke`, its package.json alias — the same environment variables are still required) performs a real add / read-back / complete round-trip. Before sending any request, it verifies that `TODOIST_CONTRACT_TEST_TOKEN` belongs to the account named by `TODOIST_CONTRACT_TEST_ACCOUNT_ID` (`test-contract/account-guard.js`) and refuses to run against any other account. Every call after that uses the verified contract-test token, never `TODOIST_API_KEY` — the script strips both `TODOIST_API_KEY` and `TODOIST_API_KEY_FILE` from the environment before loading config, so this doesn't depend on either being unset by whoever runs it.
 
 `test-contract/` holds a separate suite that asks the live Todoist API direct questions about its own behavior (for example, exactly which fields `POST /tasks/{id}` returns on a partial update), rather than testing this server's own code. It runs only when `TODOIST_CONTRACT_TEST_TOKEN` is set, is account-guarded the same way as the smoke script, and is deliberately excluded from `npm test` and from any test-on-save hook, so a live API call never fires as a side effect of editing a file.
 
