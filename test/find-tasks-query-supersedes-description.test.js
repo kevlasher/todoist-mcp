@@ -15,6 +15,12 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 
 const ENTRY = fileURLToPath(new URL('../src/index.js', import.meta.url));
 const FILTERS = ['project_id', 'section_id', 'label', 'parent_id', 'ids'];
+// Todoist's filter syntax can select these by name (#Project, /Section,
+// %label), so a combined constraint belongs in the query.
+const BY_NAME_IN_QUERY = ['project_id', 'section_id', 'label'];
+// No query syntax selects the subtasks of a given parent or specific task
+// ids, so the only way to filter by these is to omit the query.
+const NOT_EXPRESSIBLE_IN_QUERY = ['parent_id', 'ids'];
 
 let client;
 let findTasks;
@@ -57,6 +63,14 @@ after(async () => {
 //      the query ("in the query", "inside the query", "within the query",
 //      "into the query").
 //
+//   3. parent_id and ids only: the query syntax cannot select by these, so
+//      check 2 is replaced by two checks. The text must tell the agent to
+//      omit the query ("omit `query`", "leave out the query", and similar),
+//      and it must NOT tell the agent to put the constraint in the query:
+//      any sentence with a placing verb (put / place / add / include /
+//      combine) followed by an in-the-query phrase is rejected, because
+//      following it would produce a query Todoist does not support.
+//
 // Keying on the sentence rather than the whole text stops "query" in one
 // sentence and "ignored" in an unrelated one from satisfying the check.
 // Today's text has no replacement verb and no in-the-query phrase anywhere,
@@ -66,6 +80,8 @@ const REPLACE = /\b(replac|supersed|overrid|ignor)\w*/i;
 const NEGATED_REPLACE = /\b(not|never|no longer)\b[^.]{0,20}\b(replac|supersed|overrid|ignor)|n't\s+(\w+\s+)?(replac|supersed|overrid|ignor)/i;
 const COMBINE = /\b(combin\w*|together|alongside|both)\b/i;
 const INSIDE_QUERY = /\b(in|inside|within|into)\s+(the\s+)?`?query`?\b/i;
+const OMIT_QUERY = /\b(omit|leave out|drop|remove)\s+(the\s+)?`?query`?(?!\w)/i;
+const PUT_IN_QUERY = /\b(put|place|add|include|combin\w*)\b[^.;]*\b(in|inside|within|into)\s+(the\s+)?`?query`?(?!\w)/i;
 
 // Split on sentence ends followed by a capital or backtick, so "e.g. \"today\""
 // does not split mid-sentence.
@@ -85,6 +101,14 @@ function hasReplacementSentence(text, mustName = []) {
 
 function hasCombineInsideQuerySentence(text) {
   return sentences(text).some((s) => COMBINE.test(s) && INSIDE_QUERY.test(s));
+}
+
+function hasOmitQuerySentence(text) {
+  return sentences(text).some((s) => OMIT_QUERY.test(s));
+}
+
+function hasPutInQueryWording(text) {
+  return sentences(text).some((s) => PUT_IN_QUERY.test(s));
 }
 
 test('find-tasks is served over stdio tools/list with an input schema', () => {
@@ -108,7 +132,7 @@ test('find-tasks description states that query replaces all five filters', () =>
   );
 });
 
-for (const field of FILTERS) {
+for (const field of BY_NAME_IN_QUERY) {
   test(`find-tasks ${field} description states that query replaces it`, () => {
     const desc = findTasks.inputSchema.properties[field].description;
     assert.ok(
@@ -120,6 +144,27 @@ for (const field of FILTERS) {
       hasCombineInsideQuerySentence(desc),
       `${field} description must say that to combine it with a query the constraint ` +
         `goes inside the query. Got: ${JSON.stringify(desc)}`
+    );
+  });
+}
+
+for (const field of NOT_EXPRESSIBLE_IN_QUERY) {
+  test(`find-tasks ${field} description states that query replaces it and to omit query`, () => {
+    const desc = findTasks.inputSchema.properties[field].description;
+    assert.ok(
+      hasReplacementSentence(desc),
+      `${field} description needs a sentence saying a non-empty \`query\` replaces ` +
+        `this filter. Got: ${JSON.stringify(desc)}`
+    );
+    assert.ok(
+      hasOmitQuerySentence(desc),
+      `${field} description must tell the agent to omit the query to filter by it. ` +
+        `Got: ${JSON.stringify(desc)}`
+    );
+    assert.ok(
+      !hasPutInQueryWording(desc),
+      `${field} cannot be expressed in the query syntax, so its description must not ` +
+        `say to put it in the query. Got: ${JSON.stringify(desc)}`
     );
   });
 }
