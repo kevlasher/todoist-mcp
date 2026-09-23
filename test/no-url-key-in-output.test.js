@@ -18,7 +18,7 @@ function listJsFiles(dir) {
   return out;
 }
 
-// Bug class D-5 (docs/SPEC.md section 10): a `url` key in an object literal
+// Bug class D-5, fixed by AD-6 (docs/SPEC.md section 4): a `url` key in an object literal
 // that becomes tool output. Deliberately narrow: it matches the key `url`
 // written as `url:`, `'url':` or `"url":`, and nothing else. The lookbehind
 // keeps it off member reads such as `t.url` or `created?.url`, and off

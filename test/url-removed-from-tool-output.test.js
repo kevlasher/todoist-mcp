@@ -7,7 +7,7 @@ import { shapeTask, shapeProject } from '../src/shape.js';
 import { UNTRUSTED_NOTICE } from '../src/sanitize.js';
 
 /**
- * D-5 (docs/SPEC.md section 10), DECIDED Session 10: the `url` field is
+ * D-5, fixed by AD-6 (docs/SPEC.md section 4), Session 10: the `url` field is
  * removed from tool output entirely rather than guarded. A live read of
  * GET /tasks and GET /projects returned no url field, consistent with
  * section 9's observation of POST /tasks/{id}, so every raw url site emits
