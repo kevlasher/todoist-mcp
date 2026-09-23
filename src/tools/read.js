@@ -42,18 +42,52 @@ export function registerReadTools(server, client, cfg) {
       title: 'Find tasks',
       description:
         'List active tasks. Provide a Todoist filter `query` (e.g. "today | overdue", ' +
-        '"#Work & @next") for advanced searches, or narrow by project_id / section_id / ' +
-        'label / parent_id / ids. Results are paginated and size-capped.',
+        '"#Work & %next") for advanced searches, or narrow by project_id / section_id / ' +
+        'label / parent_id / ids. A non-empty `query` replaces project_id, section_id, ' +
+        'label, parent_id and ids. To combine a project, section or label with a query, ' +
+        'put it in the query by name (#Project, /Section, %label); the query cannot ' +
+        'select by parent_id or ids, so omit `query` to use them. Results are paginated ' +
+        'and size-capped.',
       inputSchema: {
         query: z
           .string()
           .optional()
           .describe('Todoist filter query. When set, uses GET /tasks/filter.'),
-        project_id: z.string().optional(),
-        section_id: z.string().optional(),
-        label: z.string().optional().describe('Label NAME (not id).'),
-        parent_id: z.string().optional(),
-        ids: z.array(z.string()).optional().describe('Specific task ids.'),
+        project_id: z
+          .string()
+          .optional()
+          .describe(
+            'Project id. A non-empty `query` replaces this filter; to combine them, ' +
+              'put the project in the query by name (#Project).'
+          ),
+        section_id: z
+          .string()
+          .optional()
+          .describe(
+            'Section id. A non-empty `query` replaces this filter; to combine them, ' +
+              'put the section in the query by name (/Section).'
+          ),
+        label: z
+          .string()
+          .optional()
+          .describe(
+            'Label NAME (not id). A non-empty `query` replaces this filter; to combine ' +
+              'them, put the label in the query (%label).'
+          ),
+        parent_id: z
+          .string()
+          .optional()
+          .describe(
+            'Parent task id. A non-empty `query` replaces this filter. The query syntax ' +
+              'cannot select by parent task, so to filter by it, omit `query`.'
+          ),
+        ids: z
+          .array(z.string())
+          .optional()
+          .describe(
+            'Specific task ids. A non-empty `query` replaces this filter. The query ' +
+              'syntax cannot select by task id, so to filter by these, omit `query`.'
+          ),
         limit: z.number().int().positive().optional(),
       },
     },
