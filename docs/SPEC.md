@@ -23,7 +23,7 @@ Maintenance: one row per session, added when the session ends.
 | 7 | Coverage rose to 90.16% / 86.67% / 86.23%. `defangUrl` added, lowering `src/sanitize.js` branch coverage. Work not otherwise recorded here. | Section 8 |
 | 8 | Contract-test methodology established, with assertion inversion and request-body verification as mandatory substitutes for the failure-first step. `POST /tasks/{id}` partial-update semantics observed directly against the live API on 2026-08-27, confirming Finding 1's premise. Account guard retrofitted onto `scripts/live-smoke.js`. | Section 9 |
 | 9 | AD-4 and AD-5 recorded. Two confounded framing assertions removed and a tripwire added. Invariant 1's framing evidence replaced with a real comparison; Invariant 2's proven capable of failing. Evidence column added to section 5. All ten `[DECISION NEEDED]` items in section 7 resolved. Section 10 opened with D-1 through D-5. Section 6's stale sanitizer marks corrected. Both Session 8 open items closed. Fixture-default collision and the unverified `url` format assumption recorded as scheduled work. | Sections 4, 5, 6, 7, 8, 9, 10 |
-| 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. | Sections 4, 5, 6, 8, 10 |
+| 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. D-3 fixed by correcting the `find-tasks` description text only, with no behavior change; decision recorded under R21, and D-3 left section 10. Test `test/find-tasks-query-supersedes-description.test.js` reads that text from `tools/list`. | Sections 4, 5, 6, 7, 8, 10 |
 
 ## 1. Purpose
 
@@ -325,7 +325,7 @@ endpoint path to the new location, not to start following redirects.
   running agent's mode.
 - The example must remain honest about the server's actual behavior, not
   merely non-personal. It names real environment variables and real tool
-  names, and it carries agent-facing warnings for D-1, D-2 and D-3.
+  names, and it carries agent-facing warnings for D-1 and D-2.
   Those warnings are part of each defect's fix criteria: when a defect in
   section 10 is fixed, removing its warning from the example is part of
   fixing it.
@@ -692,8 +692,30 @@ judgment.
 - R21. `find-tasks` must route a non-empty `query` to `/tasks/filter`; when
   no query is given, `ids[]` must be joined into a comma-separated parameter
   against `/tasks`.
-- **Superseded, Session 9.** Confirmed as a defect and scheduled. See
-  section 10, D-3.
+- **DECIDED, Session 10.** A non-empty `query` still replaces
+  `project_id`, `section_id`, `label`, `parent_id` and `ids`: only the
+  query is sent to `/tasks/filter`, and the others are not sent. Behavior
+  is unchanged. What changed is the text the agent reads. The `find-tasks`
+  description and those five fields' `.describe()` text now state that a
+  non-empty `query` replaces them; that a project, section or label is
+  combined with a query by putting it in the query by name (`#Project`,
+  `/Section`, `%label`); and that `parent_id` and `ids` cannot be
+  expressed in a query, so `query` must be omitted to filter by them.
+  Rejecting the combination as a validation error was considered and
+  deferred, because it is a behavior change.
+  The query-syntax facts come from Todoist's help article "Introduction to
+  filters" (last updated 2026-09-04), checked 2026-09-23: projects,
+  sections and labels are selectable by name, not id; there is no syntax
+  for the subtasks of a specific parent task (only `subtask` and
+  `!subtask`) or for task ids, and the article treats anything it does not
+  list as unsupported. The same article says the `@` label syntax is
+  planned for retirement by the end of 2026, which is why the description's
+  example uses `%next` rather than `@next`.
+  Evidence: `test/find-tasks-query-supersedes-description.test.js` reads
+  the text from a running server's `tools/list` response over stdio and
+  fails if any of the six strings stops saying this. Test-first commits
+  `35fb240` and `fc67322`, implementation `3d1f86b`. This was D-3 in
+  section 10, confirmed in Session 9.
 - R22. `find-tasks-by-date` must require at least one of `preset`/`date`,
   throwing `'Provide either preset or date.'` otherwise; `preset` takes
   priority over `date`/`comparison` when both are given.
@@ -1023,31 +1045,9 @@ consequences for a long-lived shared process. Decide before fixing.
 
 **Owner:** Session 10 or later. Gates publishing.
 
-### D-3 — `find-tasks` advertises filters it silently discards
+### D-3
 
-**Confirmed** by reading `src/tools/read.js` during Session 9.
-
-When a non-empty `query` is supplied, the handler calls `/tasks/filter` with
-only that query. The `project_id`, `section_id`, `label`, `parent_id`, and
-`ids` arguments are never placed on the request and never reach Todoist.
-They are not combined with the query and their presence alongside it is not
-an error.
-
-The tool's own description offers `query` and those five arguments as
-alternatives for narrowing the same search, with nothing marking them
-mutually exclusive. The consumer misled is the agent, which reads the tool
-schema rather than any documentation, so this cannot be corrected in
-`README.md` alone.
-
-**Fix criteria:**
-
-- The tool's description and the affected fields' `.describe()` text state
-  that `query` supersedes the other filters.
-- Whether the combination should instead be rejected as a validation error is
-  a separate decision, deliberately not made here. Changing it to an error is
-  a behavior change; correcting the description is not.
-
-**Owner:** Session 10. Gates publishing, description text only.
+Fixed in Session 10 by correcting the `find-tasks` description text; see section 7, R21. This number is retired, not reused.
 
 ### D-4 — Token-source errors name the wrong variable
 

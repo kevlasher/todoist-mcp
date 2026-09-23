@@ -35,7 +35,6 @@ These are recorded defects, scheduled for repair. Until they are fixed, do not p
 
 - **`get-overview` counts can be wrong, not merely incomplete.** Every count it returns is derived from fetches capped at `TODOIST_MAX_ITEMS` (default 200). On an account with more than 200 active tasks, per-project task counts and the due-today and overdue totals will be understated, with nothing in the response indicating it. Treat them as approximate. Use a targeted read when a number needs to be right.
 - **`get-overview` computes "today" in UTC**, not in the user's timezone. Near the date boundary its due-today and overdue figures misclassify tasks.
-- **`find-tasks` ignores other filters when `query` is supplied.** If you pass `query` alongside `project_id`, `section_id`, `label`, `parent_id`, or `ids`, only the query is sent. The others are silently discarded. To combine them, filter the results yourself or express the constraint inside the query.
 
 ## Working style
 
