@@ -81,7 +81,6 @@ export function registerWriteTools(server, client, cfg) {
         results.push({
           id: created?.id,
           content: safeField(created?.content, cfg.maxFieldChars),
-          url: created?.url,
         });
       }
       return buildResult(cfg, { payload: { created: results.length, tasks: results } });

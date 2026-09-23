@@ -15,15 +15,16 @@ machine.
 
 - Branch: `main`, which now matches `remediation/audit-2026-08` and is
   pushed to `origin`.
-- Tests: 72/72 passing.
+- Tests: 79/79 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
 - Sessions 1 through 9 are complete. **Resume at Session 10** — see
   section 7.
-- Five architecture decisions recorded in `docs/SPEC.md` section 4:
+- Six architecture decisions recorded in `docs/SPEC.md` section 4:
   AD-1 (mode selection belongs to the agent layer), AD-2 (URLs defanged,
   not deleted), AD-3 (all redirects refused), AD-4 (the untrusted-content
   notice is unconditional), AD-5 (the agent definition in this repo is an
-  example, not the live one). All five are written into the file.
+  example, not the live one), AD-6 (the `url` field is removed from tool
+  output, not guarded). All six are written into the file.
 
 Before doing anything else, confirm you're actually caught up rather than
 resuming stale state. A pinned commit hash drifts the moment anyone
@@ -191,37 +192,19 @@ directly; don't try to revive this one.
 
 ## 7. Session 10 and beyond
 
-Section 10 of `docs/SPEC.md` holds D-1 through D-5 with fix criteria.
+Section 10 of `docs/SPEC.md` holds D-1 through D-4 with fix criteria.
 They don't all gate publishing:
 
 - **Gates publishing:** D-1, D-2, D-3.
-- **Does not gate publishing:** D-4, D-5.
+- **Does not gate publishing:** D-4.
 
-**Do D-5 first, out of gating order.** Three decisions were made after the
-Session 9 claims analysis, specifically about D-5. They are not yet
-written into `docs/SPEC.md` section 10 — that edit, and a related
-`README.md` note, are separate tasks, not done as part of this file:
-
-- D-5 does not gate publishing. Nothing is wrong in today's behavior, and
-  `README.md` already discloses the exemption.
-- It is sequenced first in Session 10 anyway, ahead of D-1, because it is
-  the only one of the five whose failure mode is silent. D-1 through D-4
-  are all either already visibly wrong or fail loudly; D-5 would not.
-- Its fix scope is reduced from what section 10 currently describes.
-  Build only the `shapeTask` structural-format check and an offline unit
-  test covering both branches (a structural url survives intact, a
-  slugged one comes back framed). The live-API contract test that section
-  10 lists as a third piece of evidence is deliberately dropped — it only
-  reports on the day someone runs it, and standing up a schedule to run
-  it is infrastructure not worth building for a change that may never
-  come. In its place, `README.md` will carry a note disclosing that
-  Todoist could change this url format and what happens if it does.
-
-  **Caveat:** `docs/SPEC.md` section 10's D-5 entry still names the
-  contract test as required, as of this writing. That text hasn't been
-  updated to match the reduced scope above — that update is one of the
-  separate tasks noted. Until it lands, treat this section's description
-  of D-5's scope as current, not section 10's.
+**D-5: done, Session 10.** The `url` field is removed from tool output
+rather than guarded, recorded as AD-6 in `docs/SPEC.md` section 4. D-5
+has left section 10; a one-line pointer to AD-6 keeps the number from
+being reused. Test-first commit `4894671`, implementation `25c63e1`. The
+scope described in earlier versions of this section, a structural-format
+check in `shapeTask`, was superseded before it was built; see AD-6's
+rejected alternative.
 
 D-1 is next, and remains the most significant gating defect: every count
 `get-overview` returns is derived from fetches capped at
@@ -294,3 +277,14 @@ assertion:
 
 A post-edit hook runs the full suite on any change to `src/` or `test/`.
 It does not fire on `docs/`.
+
+**Run the suite under Node 20.** Cloud sessions default to Node 22,
+where `npm test` (`node --test test/`) fails before loading any test,
+with `Cannot find module '.../test'`, because Node 22 treats the
+directory argument as a module path. The post-edit hook runs on that
+default, so in a cloud session it reports a failure after every edit to
+`src/` or `test/` whatever the tests would do: treat its output as a
+false failure. Run the suite with Node 20 first on `PATH` instead, for
+example `PATH=/opt/node20/bin:$PATH npm test`, until the tracked Node
+upgrade lands. Coverage baselines in `docs/SPEC.md` section 8 are also
+Node 20 figures.

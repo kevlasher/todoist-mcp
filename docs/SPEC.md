@@ -23,6 +23,7 @@ Maintenance: one row per session, added when the session ends.
 | 7 | Coverage rose to 90.16% / 86.67% / 86.23%. `defangUrl` added, lowering `src/sanitize.js` branch coverage. Work not otherwise recorded here. | Section 8 |
 | 8 | Contract-test methodology established, with assertion inversion and request-body verification as mandatory substitutes for the failure-first step. `POST /tasks/{id}` partial-update semantics observed directly against the live API on 2026-08-27, confirming Finding 1's premise. Account guard retrofitted onto `scripts/live-smoke.js`. | Section 9 |
 | 9 | AD-4 and AD-5 recorded. Two confounded framing assertions removed and a tripwire added. Invariant 1's framing evidence replaced with a real comparison; Invariant 2's proven capable of failing. Evidence column added to section 5. All ten `[DECISION NEEDED]` items in section 7 resolved. Section 10 opened with D-1 through D-5. Section 6's stale sanitizer marks corrected. Both Session 8 open items closed. Fixture-default collision and the unverified `url` format assumption recorded as scheduled work. | Sections 4, 5, 6, 7, 8, 9, 10 |
+| 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. | Sections 4, 5, 6, 8, 10 |
 
 ## 1. Purpose
 
@@ -164,8 +165,9 @@ support:
   rejected, because any host exemption is a permanent maintenance
   obligation on a security control, and because defanging preserves the
   information the exemption was meant to protect.
-- The `url` structural field in `shape.js` is a raw passthrough and was
-  never affected by URL removal, contrary to an initial assumption.
+- This decision governs URLs that appear inside untrusted text fields. It
+  never applied to the dedicated `url` field, which is not defanged but
+  removed from tool output entirely. See AD-6.
 
 ### AD-3 — All redirects are refused
 
@@ -323,7 +325,7 @@ endpoint path to the new location, not to start following redirects.
   running agent's mode.
 - The example must remain honest about the server's actual behavior, not
   merely non-personal. It names real environment variables and real tool
-  names, and it carries agent-facing warnings for D-1, D-2, D-3 and D-5.
+  names, and it carries agent-facing warnings for D-1, D-2 and D-3.
   Those warnings are part of each defect's fix criteria: when a defect in
   section 10 is fixed, removing its warning from the example is part of
   fixing it.
@@ -369,6 +371,90 @@ already-configured server; inline definitions use the same schema as
 This is a product convention rather than a specification, so it can change
 without notice and should be re-verified before publishing.
 
+### AD-6: The `url` field is removed from tool output, not guarded
+
+**Facts:**
+
+- A live read of the real account's `GET /tasks` and `GET /projects` on
+  2026-09-23 returned HTTP 200 for both. The read sampled up to three
+  tasks and up to three projects and searched each response for a url
+  written as a string. None was found: no url value was returned in the
+  sample. A `url` field present with a null value would not have matched,
+  so the read does not establish that the field is absent, only that it
+  carried no url. This is consistent with section 9's observation of
+  `POST /tasks/{id}`, whose 28 returned fields include no `url`. The read
+  was performed directly by the operator, outside any test in this
+  repository, so section 9's contract-test methodology was not applied
+  to it.
+- Doist's official TypeScript SDK (`Doist/todoist-api-typescript`,
+  checked at commit `19798a3` on 2026-09-23) does not read a url from the
+  API. It builds task and project urls client-side from the id and the
+  task's title or the project's name, through `getTaskUrl(id, content)`
+  and `getProjectUrl(id, name)`. Its own tests expect slugged forms such
+  as `https://app.todoist.com/app/task/buy-groceries-12345` and
+  `https://app.todoist.com/app/project/work-project-67890`. Task titles
+  and project names are attacker-writable under section 2.
+- A search of `src/` for fields emitted without `safeField` or
+  `defangUrl` found three sites passing a url to the agent raw:
+  `shapeTask`, `shapeProject`, and the `add-tasks` echo in
+  `src/tools/write.js`. D-5 had named only the first. Given the first
+  fact, none of the three emitted a url value at the time.
+
+**Decision:**
+
+- No tool output carries a `url` field. All three sites are removed.
+  Anything Todoist later returns under that name is dropped at this
+  server rather than passed through.
+
+**Rationale:**
+
+- Removal closes the class instead of guarding one instance of it. A
+  guard keeps alive a field for which no url value has been observed and
+  whose content-derived form is built from attacker-writable text.
+- Nothing a caller receives today is lost, because no url value was
+  returned in any response observed.
+
+**Rejected alternative:**
+
+- The strict-pattern guard recorded in D-5's fix criteria earlier on
+  2026-09-23, in commit `ded2f24`: pass a url through only if it is
+  exactly `https://app.todoist.com/app/task/` followed by ASCII letters or
+  digits, and route everything else through `safeField`. Rejected for
+  four reasons. It guards a field for which no url value has been
+  observed, so its matching branch would not run against the data seen
+  so far. It covered only
+  `shapeTask`, leaving `shapeProject` and the `add-tasks` echo, which the
+  class search found. Covering projects needs a second pattern, and each
+  pattern is an allowlist that must stay correct as Todoist's url formats
+  change, which they have done more than once: from a query string to
+  numeric path ids to alphanumeric ids. And its non-matching
+  branch would still hand the agent a framed, defanged copy of
+  attacker-derived text, where removal hands it nothing.
+
+**Relation to AD-2:** AD-2 governs URLs inside untrusted text fields,
+which are defanged. This decision governs the dedicated `url` field,
+which is removed. The two do not overlap.
+
+**Evidence:**
+
+- `test/url-removed-from-tool-output.test.js`: `shapeTask` and
+  `shapeProject` emit no `url` key when the input carries a bare-id or
+  slugged url, and the `add-tasks` echo carries no `url` key when the
+  created object has one. Each case feeds an input that does carry a url,
+  since an input without one would pass against the old code.
+- `test/no-url-key-in-output.test.js`: static tripwire that fails on any
+  `url:` object-literal key in `src/shape.js` or `src/tools/`, reporting
+  each site by file and line. Deliberately narrow: shorthand `{ url }`,
+  computed keys and spreads of raw API objects are not caught.
+- `test/invariant4-todoist-allowlist.test.js`: the `find-tasks`
+  regression check requires that no task url survives.
+- Test-first commit `4894671`, in which all eight of these checks failed
+  on the missing-key assertion and the tripwire reported all three
+  sites. Implementation commit `25c63e1`, in which the suite went to 79
+  of 79. Before `25c63e1`, the three removals were applied to a scratch
+  copy to confirm these tests pass on exactly that change and that the
+  tripwire flags nothing else.
+
 ## 5. Invariants
 
 Each invariant below is a statement that should be mechanically checkable
@@ -405,7 +491,7 @@ tool-output assertion could not fail, which is why this column exists.
 | 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **HOLDS** | **TESTED** (`find-projects`) / **INSPECTED** (six remaining read tools) | `test/mcp-e2e.test.js` — `'read tool output is framed and strips markup; token never leaks'`, which asserts the echoed project name matches exactly what `safeField` produces. Proven capable of failing by replacing `shapeProject`'s `safeField` call with `stripMarkup`, which failed this assertion alone. Proves `find-projects` routes through the framing helper; it does not prove the helper frames correctly, which is `test/sanitize.test.js`'s job. Remaining read tools covered by inspection of the shapers in `src/shape.js`. Behavior inventory §4–5, §8; review "Also checked" §3 |
 | 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** | **TESTED** (`update-tasks`) / **INSPECTED** (four write tools framing an echoed field) / n/a (four echoing no Todoist-origin text, see AD-4) | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Proven capable of failing during Session 9 by replacing the `update-tasks` handler's `safeField(updated?.content, cfg.maxFieldChars)` call with `stripMarkup(updated?.content)`: the suite went to 71 of 72 with the failure confined to this test, and within it to the `safeField`-comparison assertion alone, while the three surrounding stripping assertions and the read-path framing test all stayed green. Reproducing this break requires widening the module's import to include `stripMarkup`. Without it the handler throws a `ReferenceError` that its own `try`/`catch` converts into an `isError` result, and the test fails on a different assertion for the wrong reason, which would look like confirmation while proving nothing. This assertion does not pin `cfg.maxFieldChars` plumbing; see section 8. |
 | 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | **UNGRADED** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
-| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **HOLDS** | **UNGRADED** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption |
+| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **HOLDS** | **UNGRADED** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption. The dedicated `url` field is not an exemption: it is removed from tool output entirely (AD-6), covered by `test/url-removed-from-tool-output.test.js` and `test/no-url-key-in-output.test.js`. Those two were watched to fail before the removal, but the defanging tests above have not been graded, so the row stays UNGRADED. |
 | 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **HOLDS** | **UNGRADED** | `test/invariant5-redirect-ssrf.test.js` — the invariant is now satisfied by refusing all redirects rather than by re-validating redirect targets, so no second URL is ever contacted |
 | 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** | **UNGRADED** | Behavior inventory §1, §7; `test/registration.test.js` |
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | **UNGRADED** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
@@ -438,14 +524,14 @@ same call and that are not subject to `safeField` framing).
 
 | Tool | R/W | Inputs | Echoed fields (framed via `safeField`?) |
 |---|---|---|---|
-| `find-tasks` | R | `query`, `project_id`, `section_id`, `label`, `parent_id`, `ids[]`, `limit` | `id`, `content`✅, `description`✅, `project_id`, `section_id`, `parent_id`, `priority`, `labels[]`✅, `due.{date,datetime,timezone,is_recurring}`, `due.string`✅, `deadline`, `is_completed`, `url`, `created_at`, `completed_at` |
+| `find-tasks` | R | `query`, `project_id`, `section_id`, `label`, `parent_id`, `ids[]`, `limit` | `id`, `content`✅, `description`✅, `project_id`, `section_id`, `parent_id`, `priority`, `labels[]`✅, `due.{date,datetime,timezone,is_recurring}`, `due.string`✅, `deadline`, `is_completed`, `created_at`, `completed_at` |
 | `find-tasks-by-date` | R | `preset`, `date`, `comparison`, `limit` | same task fields as `find-tasks`, plus computed `filter` (server-built query string, not echoed) |
-| `find-projects` | R | `limit` | `id`, `name`✅, `parent_id`, `is_inbox_project`, `is_favorite`, `is_archived`, `color`, `view_style`, `url` |
+| `find-projects` | R | `limit` | `id`, `name`✅, `parent_id`, `is_inbox_project`, `is_favorite`, `is_archived`, `color`, `view_style` |
 | `find-sections` | R | `project_id`, `limit` | `id`, `name`✅, `project_id`, `order` |
 | `find-labels` | R | `limit` | `id`, `name`✅, `color`, `is_favorite`, `order` |
 | `find-comments` | R | `task_id` XOR `project_id`, `limit` | `id`, `content`✅, `task_id`, `project_id`, `posted_at`, `attachment.file_name`✅ (URL/mime/size dropped) |
 | `get-overview` | R | *(none)* | `projects[].{id,name✅,is_inbox_project,active_task_count,sections[] (names✅)}`, `labels[]` (names✅ only, no ids), `totals.{projects,active_tasks,labels,due_today,overdue}` (all computed) |
-| `add-tasks` | W | `tasks[]`: `content`, `description`, `project_id`, `section_id`, `parent_id`, `labels[]`, `priority`, `due_string`/`due_date`/`due_datetime`, `deadline_date` | `id`, `content`✅, `url` |
+| `add-tasks` | W | `tasks[]`: `content`, `description`, `project_id`, `section_id`, `parent_id`, `labels[]`, `priority`, `due_string`/`due_date`/`due_datetime`, `deadline_date` | `id`, `content`✅ |
 | `update-tasks` | W | `tasks[]`: `id`, `content`, `description`, `labels[]`, `priority`, `due_string`/`due_date`/`due_datetime`, `deadline_date` | `id`, `content`✅ (reflects full current API state, not necessarily caller-supplied; `description` and `labels` are returned by the API and discarded rather than echoed) |
 | `complete-tasks` | W | `ids[]` | `ids[]` (caller-supplied, echoed back as-is, not from API) |
 | `uncomplete-tasks` | W | `ids[]` | `ids[]` (caller-supplied, echoed back as-is, not from API) |
@@ -462,12 +548,10 @@ v1 API accepts a caller-supplied id, so nobody who can write task content
 can put chosen bytes in this field. Raw passthrough on both paths:
 `shapeTask` emits `id` unchanged, and so do the other shapers.
 
-No mark on `url` = a recorded exemption, not a structural guarantee. Raw
-passthrough in `shapeTask`, neither framed by `safeField` nor defanged by
-`defangUrl`, with `test/invariant4-todoist-allowlist.test.js` asserting it
-survives tool output intact. The exemption is safe only while Todoist
-returns a url built from the task id alone, and nothing in this server
-checks that it does. See D-5.
+No tool's output carries a `url` field. `shapeTask`, `shapeProject` and
+the `add-tasks` echo once passed one through raw. All three are removed,
+and anything Todoist returns under that name is dropped at this server.
+See AD-6.
 
 Finding 1's injection surface is closed. Every echoed field originating
 as Todoist-writable text routes through `safeField` on both the read and
@@ -702,6 +786,22 @@ containing no dots.
 
 `src/tools/write.js` function coverage is now **38.46%**, up from the
 14.29% recorded baseline.
+
+Session 10, at commit `25c63e1` (D-5 fix), measured the same way on Node
+v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 90.85% | 87.46% | 87.29% |
+
+Line coverage is 0.23 points below the preceding test-first commit
+`4894671` (91.08%). The dip is mechanical, not lost coverage: `25c63e1`
+deleted three lines that were covered, which lowers covered lines as a
+share of the total, while the uncovered lines are the same lines as
+before, shifted up. No line lost coverage. Branch and function coverage
+are unchanged from `4894671`, and all three figures are above the
+post-Session-7 row. `src/tools/write.js` function coverage is unchanged
+at 38.46%.
 
 Notes:
 
@@ -976,74 +1076,6 @@ path.
 
 **Owner:** Session 10 or later. Does not gate publishing.
 
-### D-5 — The `url` passthrough assumes a structural format that nothing enforces or checks
+### D-5
 
-**Confirmed** by reading `src/shape.js` during Session 9, and by checking
-Todoist's published API documentation on 2026-09-15.
-
-`shapeTask` emits `url: t.url ?? null` as a raw passthrough. It is neither
-framed by `safeField` nor defanged by `defangUrl`, and
-`test/invariant4-todoist-allowlist.test.js` asserts that a real Todoist
-task url survives `find-tasks` output intact. The exemption is deliberate,
-recorded in AD-2, and tested to hold.
-
-What is not established is that the value arriving through that exemption
-is structural. The exemption is safe only while Todoist returns a url
-built from the task id alone. The v1 API documentation's example payload
-returns `https://app.todoist.com/app/task/6XR4GqQQCW6Gv9h4`, which is the
-bare id. But the same URL namespace carries a content-derived form: a task
-titled `arXiV : 202403190000 - 202403192359` produces
-`https://app.todoist.com/app/task/ar-xi-v-202403190000-202403192359-7814598409`,
-a slug built from the task's own title followed by the id. Task content is
-attacker-writable under section 2's threat model. The format has also
-changed more than once, from a query string
-(`https://todoist.com/showTask?id=999`) to numeric path ids to
-alphanumeric ids.
-
-Nothing in this server checks which form it received. If Todoist begins
-returning the slugged form from the API, attacker-influenced text reaches
-the agent inside a live, clickable, unframed URL, through the one field
-Invariant 4 does not cover, and no test fails.
-
-This is not a defect in today's behavior. It is a dependency on an
-external contract that is neither documented as stable nor verified at
-runtime, and it is the only place in this server where a security control
-rests on one.
-
-**Fix criteria:** in `shapeTask`, test the url against a structural
-pattern — host `app.todoist.com`, path `/app/task/` followed by an
-alphanumeric id and nothing further. A url that matches passes through
-intact, exactly as today. A url that does not match is routed through
-`safeField`, like every other untrusted value. If it is not the structural
-thing this server assumed, it is untrusted text, and untrusted text
-already has a handler. No behavior change while the assumption holds; when
-it stops holding, the agent gets a framed, defanged string instead of a
-live link.
-
-Two pieces of evidence:
-
-- A unit test covering both branches: a structural url survives intact, a
-  slugged one comes back framed. Verified per section 8's rule by planting
-  each value and confirming the assertion that should fail does.
-- `test/invariant4-todoist-allowlist.test.js` must still pass unchanged.
-  That is what proves the matching branch did not alter today's behavior.
-
-A contract test in `test-contract/`, subject to section 9's methodology
-and asserting the shape of the url the live API actually returns, was
-considered and deliberately dropped rather than omitted by oversight. It
-would have been the only piece of evidence able to detect Todoist changing
-the format before a real request hits it — a unit test runs against a
-fixture this project chose and stays green forever no matter what the API
-does. But it only reports on the day someone happens to run it, and
-standing up a schedule to run it regularly is infrastructure not worth
-building for a change that may never come. `README.md`'s Known defects
-entry for D-5 carries a disclosure note in its place instead.
-
-**Until this is fixed, nothing detects the change and nothing mitigates
-it.** A slugged url flows through `shapeTask` to the agent unframed and
-clickable, and no test goes red. That is the state today and it remains
-the state until the above is built.
-
-**Owner:** Session 10, first — ahead of D-1 through D-4. It is the only
-entry in this section whose failure mode is silent: no error, no failing
-test. Does not gate publishing.
+Fixed in Session 10 by removing the `url` field from tool output; see AD-6. This number is retired, not reused.
