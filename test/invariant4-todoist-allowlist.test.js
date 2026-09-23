@@ -71,13 +71,14 @@ function assertDefanged(output, url, label) {
 }
 
 // ---------------------------------------------------------------------------
-// 1. Current-regression check: does a task's real `url` field (never routed
-//    through safeField/stripMarkup per shape.js) survive a read tool's
-//    output intact today? Defanging only touches text run through
-//    stripMarkup, so this is unaffected by the defang-vs-delete decision.
+// 1. Regression check: a task's `url` field is removed from tool output
+//    entirely (D-5). Even when the API response carries a real Todoist task
+//    url, neither the url nor a `url` key may survive in find-tasks output.
+//    This is separate from defanging, which only touches text run through
+//    stripMarkup.
 // ---------------------------------------------------------------------------
 
-test('REGRESSION CHECK: a real Todoist task url field survives find-tasks output intact', async () => {
+test('REGRESSION CHECK: no Todoist task url survives in find-tasks output', async () => {
   const TASK_URL = 'https://app.todoist.com/app/task/12345';
   const orig = globalThis.fetch;
   globalThis.fetch = async () => ({

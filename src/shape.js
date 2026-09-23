@@ -38,7 +38,6 @@ export function shapeTask(t, cfg) {
     due: shapeDue(t.due, m),
     deadline: t.deadline?.date ?? null,
     is_completed: t.is_completed ?? t.checked ?? false,
-    url: t.url ?? null,
     created_at: t.created_at ?? t.added_at ?? null,
     completed_at: t.completed_at ?? null,
   };
@@ -55,7 +54,6 @@ export function shapeProject(p, cfg) {
     is_archived: p.is_archived ?? false,
     color: p.color ?? null,
     view_style: p.view_style ?? null,
-    url: p.url ?? null,
   };
 }
 
