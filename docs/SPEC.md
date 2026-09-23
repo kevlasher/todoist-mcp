@@ -1010,10 +1010,17 @@ external contract that is neither documented as stable nor verified at
 runtime, and it is the only place in this server where a security control
 rests on one.
 
-**Fix criteria:** in `shapeTask`, test the url against a structural
-pattern — host `app.todoist.com`, path `/app/task/` followed by an
-alphanumeric id and nothing further. A url that matches passes through
-intact, exactly as today. A url that does not match is routed through
+**Fix criteria:** in `shapeTask`, test the url against a strict
+structural pattern: the whole string is exactly
+`https://app.todoist.com/app/task/` followed by one or more ASCII letters
+or digits, and nothing else. No other scheme (including `http://`), no
+userinfo, no port, no query, no fragment, no trailing slash or further
+path. **DECIDED, Session 10:** strict. This is an allowlist; the cost of
+strictness is a readable but non-clickable url, and each loosening is a
+way to smuggle attacker text through the one field that skips framing.
+Same reasoning as AD-3's refusal of all redirects. A url that matches
+passes through intact, exactly as today. A url that does not match is
+routed through
 `safeField`, like every other untrusted value. If it is not the structural
 thing this server assumed, it is untrusted text, and untrusted text
 already has a handler. No behavior change while the assumption holds; when
