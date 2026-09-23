@@ -100,8 +100,8 @@ test('REGRESSION CHECK: a real Todoist task url field survives find-tasks output
     const res = await client.callTool({ name: 'find-tasks', arguments: {} });
     const text = res.content.map((c) => c.text).join('\n');
     assert.ok(
-      text.includes(TASK_URL),
-      `expected task url field to survive intact in output; got: ${text}`
+      !text.includes(TASK_URL) && !text.includes('"url"'),
+      `expected task url field to be absent from output (D-5); got: ${text}`
     );
     await client.close();
   } finally {
