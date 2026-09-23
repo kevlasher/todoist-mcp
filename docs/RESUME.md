@@ -15,7 +15,7 @@ machine.
 
 - Branch: `main`, which now matches `remediation/audit-2026-08` and is
   pushed to `origin`.
-- Tests: 79/79 passing, under Node 20 (see section 8).
+- Tests: 86/86 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
 - Sessions 1 through 9 are complete. **Resume at Session 10** — see
   section 7.
@@ -192,10 +192,10 @@ directly; don't try to revive this one.
 
 ## 7. Session 10 and beyond
 
-Section 10 of `docs/SPEC.md` holds D-1 through D-4 with fix criteria.
+Section 10 of `docs/SPEC.md` holds D-1, D-2 and D-4 with fix criteria.
 They don't all gate publishing:
 
-- **Gates publishing:** D-1, D-2, D-3.
+- **Gates publishing:** D-1, D-2.
 - **Does not gate publishing:** D-4.
 
 **D-5: done, Session 10.** The `url` field is removed from tool output
@@ -206,6 +206,17 @@ scope described in earlier versions of this section, a structural-format
 check in `shapeTask`, was superseded before it was built; see AD-6's
 rejected alternative.
 
+**D-3: done, Session 10.** Description text only, no behavior change. A
+non-empty `query` still replaces `project_id`, `section_id`, `label`,
+`parent_id` and `ids`; the `find-tasks` description and those five
+fields' descriptions now say so, say to combine a project, section or
+label by putting it in the query by name (`#Project`, `/Section`,
+`%label`), and say `parent_id` and `ids` cannot be expressed in a query.
+Rejecting the combination as an error was deferred as a behavior change.
+Decision recorded under R21 in `docs/SPEC.md` section 7; D-3 has left
+section 10. Test-first commits `35fb240` and `fc67322`, implementation
+`3d1f86b`.
+
 D-1 is next, and remains the most significant gating defect: every count
 `get-overview` returns is derived from fetches capped at
 `TODOIST_MAX_ITEMS`, so an account with more than 200 active tasks gets
@@ -214,10 +225,7 @@ discarded in favour of an unconditional note. D-2 carries an open decision
 that must be made before it can be fixed: how the timezone used for
 "today" is supplied is not decided — an environment variable read once at
 startup and a per-request parameter have different consequences for a
-long-lived shared process. D-3 is the smallest gating item: `find-tasks`
-advertises `project_id`/`section_id`/`label`/`parent_id`/`ids` as
-narrowing filters that a `query` argument silently discards; the fix is
-description text only, not a behavior change.
+long-lived shared process.
 
 D-4 does not gate publishing: token-source error messages name the wrong
 environment variable in some cases (an operator who configured

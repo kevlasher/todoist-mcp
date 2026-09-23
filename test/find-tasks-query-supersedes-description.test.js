@@ -1,5 +1,5 @@
 /**
- * D-3 (docs/SPEC.md section 10): `find-tasks` sends only `query` when a
+ * D-3 (docs/SPEC.md section 7, R21): `find-tasks` sends only `query` when a
  * non-empty query is supplied, and drops project_id / section_id / label /
  * parent_id / ids. The behavior stays; the text the agent reads must say so.
  *

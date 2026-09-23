@@ -54,7 +54,7 @@ Read tools are registered in **all** modes. Write tools are registered **only** 
 
 | Tool | Todoist API v1 endpoint(s) |
 | --- | --- |
-| `find-tasks` | `GET /tasks` — or `GET /tasks/filter?query=` when a filter `query` is supplied. The tool also accepts `project_id` / `section_id` / `label` / `parent_id` / `ids`, but **when `query` is given, none of those are sent to Todoist and have no effect** — nothing errors or warns. See Known defects, D-3. |
+| `find-tasks` | `GET /tasks`, or `GET /tasks/filter?query=` when a non-empty filter `query` is supplied. Without `query`, the tool narrows by `project_id` / `section_id` / `label` / `parent_id` / `ids`. A non-empty `query` replaces those five: only the query is sent. To combine a project, section or label with a query, put it in the query by name (`#Project`, `/Section`, `%label`). `parent_id` and `ids` have no query equivalent, so omit `query` to use them. The tool's own description tells the agent the same. |
 | `find-tasks-by-date` | `GET /tasks/filter?query=<date filter>` — builds the filter from a `preset` (today / overdue / next7days / nodate / recurring) or a `date` + `comparison` (on / before / after). |
 | `find-projects` | `GET /projects` |
 | `find-sections` | `GET /sections` (optionally `?project_id=`) |
@@ -110,13 +110,12 @@ These aren't gaps scheduled to close — they're inherent to what a tool-registr
 
 ## Known defects
 
-Three defects that affect tool output are open: D-1, D-2 and D-3, each already qualified above, next to the tool it affects. They are named again here, together, because an agent or operator shouldn't have to go find `docs/SPEC.md` to learn what's actually wrong. Full root cause and fix criteria for each live in `docs/SPEC.md` section 10.
+Two defects that affect tool output are open: D-1 and D-2, each already qualified above, next to the tool it affects. They are named again here, together, because an agent or operator shouldn't have to go find `docs/SPEC.md` to learn what's actually wrong. Full root cause and fix criteria for each live in `docs/SPEC.md` section 10.
 
 - **D-1 — `get-overview` counts can be wrong, not just incomplete.** Derived from fetches capped at `TODOIST_MAX_ITEMS` (default 200); accounts with more active tasks than that get undercounts with no signal distinguishing them from correct ones.
 - **D-2 — `get-overview` computes "today" in UTC on the server host,** not in any particular user's timezone, misclassifying tasks near the date boundary.
-- **D-3 — `find-tasks` silently discards its other filters when `query` is supplied.** `project_id`, `section_id`, `label`, `parent_id`, and `ids` are accepted alongside `query` but never sent and never take effect.
 
-A fourth item, D-4, is a startup configuration error message that names the wrong environment variable in some cases — it's noted under Configuration below rather than here, since it affects an operator's setup error, not tool output an agent or caller ever sees.
+A third item, D-4, is a startup configuration error message that names the wrong environment variable in some cases — it's noted under Configuration below rather than here, since it affects an operator's setup error, not tool output an agent or caller ever sees.
 
 ---
 
