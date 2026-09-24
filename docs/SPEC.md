@@ -23,7 +23,7 @@ Maintenance: one row per session, added when the session ends.
 | 7 | Coverage rose to 90.16% / 86.67% / 86.23%. `defangUrl` added, lowering `src/sanitize.js` branch coverage. Work not otherwise recorded here. | Section 8 |
 | 8 | Contract-test methodology established, with assertion inversion and request-body verification as mandatory substitutes for the failure-first step. `POST /tasks/{id}` partial-update semantics observed directly against the live API on 2026-08-27, confirming Finding 1's premise. Account guard retrofitted onto `scripts/live-smoke.js`. | Section 9 |
 | 9 | AD-4 and AD-5 recorded. Two confounded framing assertions removed and a tripwire added. Invariant 1's framing evidence replaced with a real comparison; Invariant 2's proven capable of failing. Evidence column added to section 5. All ten `[DECISION NEEDED]` items in section 7 resolved. Section 10 opened with D-1 through D-5. Section 6's stale sanitizer marks corrected. Both Session 8 open items closed. Fixture-default collision and the unverified `url` format assumption recorded as scheduled work. | Sections 4, 5, 6, 7, 8, 9, 10 |
-| 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. D-3 fixed by correcting the `find-tasks` description text only, with no behavior change; decision recorded under R21, and D-3 left section 10. Test `test/find-tasks-query-supersedes-description.test.js` reads that text from `tools/list`. | Sections 4, 5, 6, 7, 8, 10 |
+| 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. D-3 fixed by correcting the `find-tasks` description text only, with no behavior change; decision recorded under R21, and D-3 left section 10. Test `test/find-tasks-query-supersedes-description.test.js` reads that text from `tools/list`. D-1 fixed: `get-overview`'s tasks fetch counts up to a fixed 5000 while its project, section and label lists keep `TODOIST_MAX_ITEMS`; every count carries `is_floor`; orphaned sections and tasks are surfaced. Decision recorded under R24, and D-1 left section 10. R17's bare-array flag fixed alongside it. AD-5's list of example-agent warnings updated. Coverage recorded for `cdd670f`. | Sections 4, 5, 6, 7, 8, 10 |
 
 ## 1. Purpose
 
@@ -325,10 +325,10 @@ endpoint path to the new location, not to start following redirects.
   running agent's mode.
 - The example must remain honest about the server's actual behavior, not
   merely non-personal. It names real environment variables and real tool
-  names, and it carries agent-facing warnings for D-1 and D-2.
-  Those warnings are part of each defect's fix criteria: when a defect in
-  section 10 is fixed, removing its warning from the example is part of
-  fixing it.
+  names, and it carries an agent-facing warning for D-2. Its D-1
+  warning was removed when D-1 was fixed in Session 10. Those warnings
+  are part of each defect's fix criteria: when a defect in section 10 is
+  fixed, removing its warning from the example is part of fixing it.
 - The example is read-only, so its body text describes a process with no
   write tools registered. A write-capable definition is not a matter of
   flipping one env value; it needs its own body text, because a read-only
@@ -675,6 +675,11 @@ judgment.
   not-truncated, even when the array came back full at the requested page
   limit. Fix scheduled for a later session: that branch must set the flag
   based on whether the array came back at the page limit.
+- **Done, Session 10.** The bare-array branch now reports truncated when
+  the array came back at or above the requested page limit. The cursor
+  path is unchanged. Evidence: `test/getpaginated-truncated-flag.test.js`,
+  which also pins the cursor path's exact-cap boundary in both directions,
+  previously untested. Implementation `cdd670f`, landed with D-1; see R24.
 
 ### Server lifecycle
 - R18. Read tools must register in every mode; write tools must register
@@ -731,10 +736,38 @@ judgment.
   and fail entirely (no partial results) if any one fetch rejects.
 - **Superseded, Session 9.** Confirmed as a defect and scheduled. See
   section 10, D-2.
-- **Superseded, Session 9.** Confirmed as a defect and scheduled. See
-  section 10, D-1. The section 10 entry is broader than this item was: it
-  records the dropped sections as one consequence of a larger root cause,
-  capped fetches feeding derived counts, not as an isolated edge case.
+- **DECIDED, Session 10.** Fix for D-1, formerly in section 10. The
+  tasks fetch uses a fixed ceiling, `OVERVIEW_MAX_ITEMS = 5000` in
+  `src/tools/read.js`, a constant rather than an environment variable.
+  Projects, sections and labels keep `TODOIST_MAX_ITEMS`. The split
+  follows what each fetch sends to the agent. Tasks are only counted and
+  no task text is returned, so counting more of them does not widen the
+  untrusted text that reaches the agent. Project, section and label names
+  are returned, and they are attacker-writable text, so raising those
+  caps would widen it; they keep the cap every other tool uses.
+
+  Every count is `{ count, is_floor }`, where `is_floor` is the
+  `truncated` flag of the fetch the count derives from. Below the caps
+  counts are exact; above them each affected count is marked as a
+  minimum. Per-fetch `{ fetched, truncated }` is reported under
+  `fetches`. `warnings` is present only when a fetch was truncated, and
+  the unconditional note is removed. Sections whose project is not in the
+  projects fetch are listed in `unmatched_sections` instead of being
+  dropped. Tasks in such projects had the same problem, counted in the
+  total but under no project, and are now counted in
+  `tasks_in_unlisted_projects`. Signal keys precede the name lists,
+  because `capOutput` truncates from the end. The tool still takes no
+  `limit` argument. Its description states the task ceiling, the normal
+  cap on lists, and that `is_floor` marks a minimum.
+
+  The R17 bare-array fix landed with this. Without it, a bare array would
+  report a full page as complete, and a count derived from it as exact.
+  Evidence: `test/get-overview-truncation.test.js`, whose shared guard
+  fails if any count's `is_floor` differs from its fetch's `truncated`
+  flag, and `test/getpaginated-truncated-flag.test.js`. Test-first commit
+  `109f132`, implementation `cdd670f`. This was D-1 in section 10,
+  confirmed in Session 9. D-2, "today" computed in UTC, is a different
+  root cause and is not affected.
 - R25. Every tool response, read and write alike, must be prefixed with
   `UNTRUSTED_NOTICE` and size-capped via `capOutput` (see R12). The
   prefix is applied unconditionally in `buildResult` and does not depend
@@ -824,6 +857,18 @@ before, shifted up. No line lost coverage. Branch and function coverage
 are unchanged from `4894671`, and all three figures are above the
 post-Session-7 row. `src/tools/write.js` function coverage is unchanged
 at 38.46%.
+
+Session 10, at commit `cdd670f` (D-1 and R17 fix), measured the same way
+on Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 94.82% | 89.28% | 91.43% |
+
+All three figures are above the `25c63e1` row. `src/tools/read.js` rose
+from 77.40% / 76.92% / 71.43% at the test-first commit `109f132` to
+80.82% / 84.62% / 75.00%. `src/tools/write.js` function coverage is
+unchanged at 38.46%.
 
 Notes:
 
@@ -968,53 +1013,9 @@ resolved.
 An entry leaves this section when the defect is fixed and a test exists that
 fails if it returns.
 
-### D-1 — `get-overview` reports counts derived from a capped fetch, with no signal
+### D-1
 
-**Confirmed** by reading `src/tools/read.js` during Session 9.
-
-`get-overview` issues four `getPaginated` calls, each independently capped at
-`cfg.maxItems` (default 200). Every derived number is computed from those
-capped sets:
-
-- each project's `active_task_count`, counted across the tasks fetch
-- `totals.due_today` and `totals.overdue`, counted across the same fetch
-- `totals.projects`, `totals.active_tasks`, `totals.labels`, each the length
-  of its own capped fetch
-
-For an account with more than 200 active tasks, these numbers are not
-truncated, they are wrong. A project holding 40 active tasks can report 3,
-because only 3 of its tasks fell inside the first 200 fetched. Two hundred
-active tasks is ordinary for a GTD account, so this is not a large-account
-edge case.
-
-`getPaginated` returns a `truncated` flag on each of the four calls.
-`get-overview` discards all four. In their place the payload carries a fixed
-`note` string stating that counts reflect up to the configured cap and large
-accounts may be truncated. That note is emitted unconditionally, so it does
-not distinguish a correct overview from a wrong one. A caller cannot tell
-which it received.
-
-Two further consequences of the same root cause:
-
-- A section whose `project_id` does not appear in the projects fetch is
-  silently dropped from the output. Reachable when the projects fetch itself
-  is capped.
-- `get-overview`'s input schema is empty, so unlike the other list tools it
-  accepts no `limit` and a caller cannot raise the cap for this view.
-
-**Fix criteria:**
-
-- Truncation must be visible per fetch in the response, derived from the
-  `truncated` flags rather than from a fixed string.
-- Any total or per-project count computed from a truncated fetch must be
-  identifiable as a floor rather than an exact count.
-- A dropped orphaned section must be surfaced, not silently discarded.
-- The unconditional `note` string is removed or replaced by a signal that is
-  only present when it applies.
-- A test fails if a count derived from a truncated fetch is presented as
-  exact.
-
-**Owner:** Session 10. Gates publishing.
+Fixed in Session 10 by counting tasks up to a fixed 5000 and marking every count from a truncated fetch as a floor; see section 7, R24. This number is retired, not reused.
 
 ### D-2 — `get-overview` computes "today" in UTC on the server host
 
@@ -1030,18 +1031,22 @@ already tomorrow in UTC.
 Same tool as D-1 and the same two output fields, but a different root cause.
 Fixing one does not fix the other.
 
+**DECIDED, Session 10.** `get-overview` stops computing "today" itself.
+It asks Todoist's own `today` and `overdue` filters instead, so the
+timezone is the Todoist account's own. This replaces the open question of
+how a timezone is supplied: neither an environment variable nor a
+per-request parameter is needed, because the server no longer holds a
+timezone at all.
+
 **Fix criteria:**
 
-- The timezone used for the comparison is explicit, not inferred from the
-  host.
-- The response states which timezone was used, so a wrong answer is visibly
-  wrong rather than silently wrong.
-- Behavior is defined for tasks with a floating due date versus a datetime
-  carrying its own timezone.
-
-**Open:** how the timezone is supplied is not decided. An environment
-variable read once at startup and a per-request parameter have different
-consequences for a long-lived shared process. Decide before fixing.
+- The response states that `due_today` and `overdue` come from Todoist's
+  filters, evaluated in the Todoist account's timezone.
+- Floating due dates versus datetimes carrying their own timezone are
+  handled by Todoist, not by this server.
+- The two new fetches carry the same `is_floor` and truncation signals as
+  the other four: each is reported under `fetches`, and a count derived
+  from a truncated fetch is marked as a floor.
 
 **Owner:** Session 10 or later. Gates publishing.
 
