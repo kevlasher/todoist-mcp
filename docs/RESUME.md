@@ -13,18 +13,19 @@ machine.
 
 ## 1. Where things stand
 
-- Branch: `main`, which now matches `remediation/audit-2026-08` and is
-  pushed to `origin`.
-- Tests: 110/110 passing, under Node 20 (see section 8).
+- Branch: work happens on a short-lived branch per cloud session, merged
+  into `main` by pull request. `main` on `origin` is the source of truth.
+- Tests: 115/115 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 12 are complete; section 7 records Session 12.
+- Sessions 1 through 13 are complete; section 7 records Session 13.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
-  D-12 is done (section 7). **Next: D-11, then the remaining gating
-  defects, D-6 through D-10, before publication.** Each has fix criteria
-  and its reproduction input in section 10. D-13 through D-22 do not gate
-  publication.
+  D-12 and D-11 are done (section 7), D-11 in test-first commit
+  `e96d3fe` and implementation `9d4bd71`. **Next: the three small code
+  fixes, D-8, D-9 and D-10, then the remaining gating defects, D-6 and
+  D-7, before publication.** Each has fix criteria and its reproduction
+  input in section 10. D-13 through D-22 do not gate publication.
 - After those, and still before the repository goes public:
   - the free scanning stack on GitHub, with CI running the suite under
     Node 20;
@@ -107,29 +108,40 @@ When it's time to ship this branch's work to the running server:
 
 ## 4. Code that touches a live account
 
-Three places in this repo can write to a real Todoist account. Two are
-guarded and one is not. Know about all three before running anything.
+Three places in this repo can write to a real Todoist account. All three
+are guarded by `test-contract/account-guard.js`: before any other
+request, each checks that `TODOIST_CONTRACT_TEST_TOKEN` opens the account
+named by `TODOIST_CONTRACT_TEST_ACCOUNT_ID`, and refuses to proceed if it
+does not. Know about all three before running anything.
 
 - `test-contract/` holds the Session 8 contract tests. They run only when
-  `TODOIST_CONTRACT_TEST_TOKEN` is set, and an account guard refuses to
-  proceed unless the token opens the designated throwaway account.
+  `TODOIST_CONTRACT_TEST_TOKEN` is set, and call the guard first.
 - `scripts/live-smoke.js` performs a live write round-trip. Session 8
-  retrofitted the same account guard onto it. Before that it wrote to
+  retrofitted the account guard onto it. Before that it wrote to
   whatever account its token opened, with no identity check.
 - `scripts/live-smoke-date.js` creates and completes a task to exercise
-  `find-tasks-by-date`. It has **no account guard**. It takes its token
-  from `TODOIST_API_KEY` or `TODOIST_API_KEY_FILE`, so it writes to
-  whatever account that token opens, including a personal one. Do not run
-  it until `docs/SPEC.md` D-11 is fixed.
+  `find-tasks-by-date`. Session 13 added the same guard (`docs/SPEC.md`
+  D-11, `9d4bd71`). Before that it took its token from `TODOIST_API_KEY`
+  or `TODOIST_API_KEY_FILE` and wrote to whatever account that token
+  opened.
+
+Both scripts use only the verified contract token: they remove
+`TODOIST_API_KEY` and `TODOIST_API_KEY_FILE` from the environment they
+load config from. `test/live-write-paths-guarded.test.js` fails if any
+file in `scripts/` or `test-contract/` that can send a non-GET request
+does not call the guard first.
+
+The guard shows that an id matches, not that the account is disposable,
+so it is only as safe as the id it is given. That and the guard's and
+scripts' other gaps are recorded as D-21 in `docs/SPEC.md`.
 
 `npm test` runs none of them. It is `node --test test/` and is fully
-offline.
+offline. `test/live-smoke-date-account-guard.test.js` runs
+`scripts/live-smoke-date.js` with `fetch` stubbed, so no request leaves
+the machine.
 
-`README.md` documents `npm run smoke`'s account guard correctly, and
-covers `test-contract/` in both its Tests section and its Layout block.
-It is wrong about the total: its Tests section says two layers touch a
-live account and that both are guarded, and its Layout block omits
-`scripts/live-smoke-date.js`. Both are part of D-11's fix criteria.
+`README.md`'s Tests section lists all three paths with their
+invocations, and its Layout block includes `scripts/live-smoke-date.js`.
 
 ## 5. Session 9: closed
 
@@ -213,7 +225,22 @@ directly; don't try to revive this one.
 
 Superseded on 2026-09-24: the independent code review found seven new
 defects that gate publication, D-6 through D-12 (see section 1). The
-paragraph below describes the state at the end of Session 10.
+paragraph beginning "Section 10 of `docs/SPEC.md` holds D-4" describes
+the state at the end of Session 10.
+
+**D-11: done, Session 13.** Test-first commit `e96d3fe`, implementation
+`9d4bd71`. `scripts/live-smoke-date.js` calls `verifyContractTestAccount`
+before any request and loads config with `TODOIST_API_KEY` set to the
+verified contract token and `TODOIST_API_KEY_FILE` removed, as
+`scripts/live-smoke.js` does. `test/live-smoke-date-account-guard.test.js`
+runs the script with `fetch` stubbed and checks that it sends nothing
+without the contract variables, stops after the account check on a
+mismatch, and uses only the contract token on a match.
+`test/live-write-paths-guarded.test.js` covers the bug class across
+`scripts/` and `test-contract/` and found no other offender. `README.md`
+lists the three guarded live paths. D-11 has left section 10. D-21's
+weaknesses in the guard and the scripts are untouched. 115 tests pass.
+Next: the three small code fixes, D-8, D-9 and D-10.
 
 **D-12: done, Session 12.** Tests only, `6a99b01`. The token test in
 `test/client.test.js` uses a registered 40-character token and asserts

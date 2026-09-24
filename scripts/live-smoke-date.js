@@ -7,17 +7,25 @@
  * unified API's dedicated filter endpoint /api/v1/tasks/filter — a DISTINCT
  * endpoint from /tasks. A passing find-tasks smoke test does not prove this.
  *
- * It requires a real token (TODOIST_API_KEY or TODOIST_API_KEY_FILE) and must
- * run in READ/WRITE mode (TODOIST_READONLY=false). It sets up and tears down
- * its own throwaway task, leaving no active residue.
+ * It runs only against the verified contract test account, as
+ * scripts/live-smoke.js does: the account guard is checked before anything
+ * else, and every later call uses the same contract-test token that guard
+ * just verified, never TODOIST_API_KEY or TODOIST_API_KEY_FILE. It must run in
+ * READ/WRITE mode (TODOIST_READONLY=false). It sets up and tears down its own
+ * throwaway task, leaving no active residue.
  *
  * Usage:
- *   TODOIST_API_KEY=xxxxx TODOIST_READONLY=false node scripts/live-smoke-date.js
+ *   TODOIST_CONTRACT_TEST_TOKEN=xxxxx TODOIST_CONTRACT_TEST_ACCOUNT_ID=yyyyy \
+ *     TODOIST_READONLY=false node scripts/live-smoke-date.js
+ *
+ * There is no environment variable, flag, or argument that skips the account
+ * guard.
  *
  * It does NOT modify any src/ code. It observes the real wire URL by wrapping
  * globalThis.fetch (the same seam the offline tests use), passing every logged
  * URL through the project's existing redaction path so the token can't leak.
  */
+import { verifyContractTestAccount } from '../test-contract/account-guard.js';
 import { loadConfig } from '../src/config.js';
 import { createServer } from '../src/server.js';
 import { registerSecret, redact } from '../src/redact.js';
@@ -45,7 +53,19 @@ function parseBody(text) {
 }
 
 async function main() {
-  const cfg = loadConfig();
+  // Account guard first, before loadConfig, before any Todoist request.
+  // Throws (and makes no other request) if the token is missing or does
+  // not belong to the expected contract test account.
+  const account = await verifyContractTestAccount();
+  console.log(`Verified contract test account: id ${account.id}`);
+
+  // Use the contract-test token for everything below, not TODOIST_API_KEY.
+  // Both real-environment token inputs are stripped before loadConfig sees
+  // this env, so the account verified above is the only one this script can
+  // reach, whatever config.js's token priority rule says.
+  const smokeEnv = { ...process.env, TODOIST_API_KEY: process.env.TODOIST_CONTRACT_TEST_TOKEN };
+  delete smokeEnv.TODOIST_API_KEY_FILE;
+  const cfg = loadConfig(smokeEnv);
   if (cfg.readOnly) {
     console.error(
       'Refusing to run: this test writes a throwaway task, so it needs TODOIST_READONLY=false.'
