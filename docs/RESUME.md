@@ -15,15 +15,16 @@ machine.
 
 - Branch: `main`, which now matches `remediation/audit-2026-08` and is
   pushed to `origin`.
-- Tests: 108/108 passing, under Node 20 (see section 8).
+- Tests: 110/110 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 10 are complete; section 7 records Session 10.
+- Sessions 1 through 12 are complete; section 7 records Session 12.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
-  **Next: fix the gating defects, D-6 through D-12, before publication.**
-  Each has fix criteria and its reproduction input in section 10. D-13
-  through D-22 do not gate publication.
+  D-12 is done (section 7). **Next: D-11, then the remaining gating
+  defects, D-6 through D-10, before publication.** Each has fix criteria
+  and its reproduction input in section 10. D-13 through D-22 do not gate
+  publication.
 - After those, and still before the repository goes public:
   - the free scanning stack on GitHub, with CI running the suite under
     Node 20;
@@ -46,8 +47,8 @@ commits, so check content instead of a hash:
 
 - `git status --short` should print nothing.
 - `docs/SPEC.md`'s Decision log (top of the file) should have a row for
-  Session 9. If it doesn't, the Session 9 commits haven't landed on this
-  branch.
+  the most recent session recorded in section 7 below. If it doesn't,
+  that session's commits haven't landed on this branch.
 - Section 5 below should read "Session 9: closed." If it instead lists
   open "Remaining" work, you're looking at an older copy of this file.
 - Section 6 below should read as a closure note, a few sentences, not an
@@ -213,6 +214,16 @@ directly; don't try to revive this one.
 Superseded on 2026-09-24: the independent code review found seven new
 defects that gate publication, D-6 through D-12 (see section 1). The
 paragraph below describes the state at the end of Session 10.
+
+**D-12: done, Session 12.** Tests only, `6a99b01`. The token test in
+`test/client.test.js` uses a registered 40-character token and asserts
+it is absent from the error message; removing the error detail's
+redaction in `src/client.js` turns it red. The `find-tasks` regression
+check requires success and the fixture task before asserting no `url`;
+a throwing handler turns it red. `test/calltool-asserts-iserror.test.js`
+fails on any test that calls `callTool` without asserting on `isError`,
+and found three more in `test/mcp-e2e.test.js`, now fixed. D-12 has left
+section 10. D-17's short-token gap is untouched. Next: D-11.
 
 Section 10 of `docs/SPEC.md` holds D-4 with fix criteria. No defect
 gating publication remains: D-2, the last one, is done. D-4 does not gate
