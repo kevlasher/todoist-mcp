@@ -8,7 +8,8 @@
  *   find-sections      GET /sections[?project_id=]
  *   find-labels        GET /labels
  *   find-comments      GET /comments?task_id= | ?project_id=
- *   get-overview       GET /projects + GET /sections + GET /tasks (aggregated)
+ *   get-overview       GET /projects + /sections + /labels + /tasks
+ *                      + GET /tasks/filter?query=today | ?query=overdue (aggregated)
  */
 import { z } from 'zod';
 import {
@@ -21,8 +22,9 @@ import {
 import { buildResult } from '../result.js';
 
 /**
- * Fixed ceiling for get-overview's tasks fetch (D-1). Deliberately not
- * configurable and not TODOIST_MAX_ITEMS: see the comment in the handler.
+ * Fixed ceiling for get-overview's tasks, today and overdue fetches (D-1,
+ * D-2). Deliberately not configurable and not TODOIST_MAX_ITEMS: see the
+ * comment in the handler.
  */
 export const OVERVIEW_MAX_ITEMS = 5000;
 
@@ -297,7 +299,9 @@ export function registerReadTools(server, client, cfg) {
       description:
         'A compact GTD overview: projects with active-task counts, section names, label ' +
         'names, and counts of tasks due today / overdue. Aggregates GET /projects, ' +
-        '/sections, /labels and /tasks. Task counts cover up to 5000 active tasks; ' +
+        '/sections, /labels, /tasks and /tasks/filter. due_today and overdue come from Todoist\'s ' +
+        'own "today" and "overdue" filters, evaluated in the Todoist account\'s ' +
+        'timezone. Task counts cover up to 5000 tasks each; ' +
         'project, section and label lists follow the normal item cap. Each count is ' +
         '{ count, is_floor }: when is_floor is true the count is a minimum, not exact. ' +
         'Size-capped.',
@@ -307,16 +311,18 @@ export function registerReadTools(server, client, cfg) {
       // Tasks are only counted, never returned, so counting more of them does
       // not widen the untrusted text reaching the agent (D-1). Projects,
       // sections and labels return attacker-writable names and keep the
-      // configured cap.
-      const [projRes, secRes, labelRes, taskRes] = await Promise.all([
+      // configured cap. "Today" is Todoist's, in the account's timezone: the
+      // server holds no clock or timezone for it (D-2).
+      const [projRes, secRes, labelRes, taskRes, todayRes, overdueRes] = await Promise.all([
         client.getPaginated('/projects', {}, cfg.maxItems),
         client.getPaginated('/sections', {}, cfg.maxItems),
         client.getPaginated('/labels', {}, cfg.maxItems),
         client.getPaginated('/tasks', {}, OVERVIEW_MAX_ITEMS),
+        client.getPaginated('/tasks/filter', { query: 'today', lang: 'en' }, OVERVIEW_MAX_ITEMS),
+        client.getPaginated('/tasks/filter', { query: 'overdue', lang: 'en' }, OVERVIEW_MAX_ITEMS),
       ]);
       const counted = (count, res) => ({ count, is_floor: res.truncated });
 
-      const today = new Date().toISOString().slice(0, 10);
       const projectIds = new Set(projRes.items.map((p) => p.id));
       const sectionsByProject = new Map();
       const unmatchedSections = [];
@@ -331,19 +337,12 @@ export function registerReadTools(server, client, cfg) {
       }
 
       const counts = new Map();
-      let dueToday = 0;
-      let overdue = 0;
       let unlistedTasks = 0;
       for (const t of taskRes.items) {
         if (projectIds.has(t.project_id)) {
           counts.set(t.project_id, (counts.get(t.project_id) ?? 0) + 1);
         } else {
           unlistedTasks += 1;
-        }
-        const d = t.due?.date;
-        if (d) {
-          if (d === today) dueToday += 1;
-          else if (d < today) overdue += 1;
         }
       }
 
@@ -363,6 +362,8 @@ export function registerReadTools(server, client, cfg) {
         sections: { fetched: secRes.items.length, truncated: secRes.truncated },
         labels: { fetched: labelRes.items.length, truncated: labelRes.truncated },
         tasks: { fetched: taskRes.items.length, truncated: taskRes.truncated },
+        due_today: { fetched: todayRes.items.length, truncated: todayRes.truncated },
+        overdue: { fetched: overdueRes.items.length, truncated: overdueRes.truncated },
       };
       const warnings = [];
       if (projRes.truncated) {
@@ -387,8 +388,20 @@ export function registerReadTools(server, client, cfg) {
       if (taskRes.truncated) {
         warnings.push(
           `tasks fetch was truncated at ${fetches.tasks.fetched} items; active_tasks, ` +
-            "due_today, overdue, tasks_in_unlisted_projects and every project's " +
-            'active_task_count are floors (at least this many), not exact.'
+            "tasks_in_unlisted_projects and every project's active_task_count are " +
+            'floors (at least this many), not exact.'
+        );
+      }
+      if (todayRes.truncated) {
+        warnings.push(
+          `today filter fetch was truncated at ${fetches.due_today.fetched} items; ` +
+            'totals.due_today is a floor, not exact.'
+        );
+      }
+      if (overdueRes.truncated) {
+        warnings.push(
+          `overdue filter fetch was truncated at ${fetches.overdue.fetched} items; ` +
+            'totals.overdue is a floor, not exact.'
         );
       }
 
@@ -401,8 +414,8 @@ export function registerReadTools(server, client, cfg) {
             projects: counted(projRes.items.length, projRes),
             active_tasks: counted(taskRes.items.length, taskRes),
             labels: counted(labelRes.items.length, labelRes),
-            due_today: counted(dueToday, taskRes),
-            overdue: counted(overdue, taskRes),
+            due_today: counted(todayRes.items.length, todayRes),
+            overdue: counted(overdueRes.items.length, overdueRes),
           },
           tasks_in_unlisted_projects: counted(unlistedTasks, taskRes),
           unmatched_sections: unmatchedSections,

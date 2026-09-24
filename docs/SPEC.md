@@ -23,7 +23,7 @@ Maintenance: one row per session, added when the session ends.
 | 7 | Coverage rose to 90.16% / 86.67% / 86.23%. `defangUrl` added, lowering `src/sanitize.js` branch coverage. Work not otherwise recorded here. | Section 8 |
 | 8 | Contract-test methodology established, with assertion inversion and request-body verification as mandatory substitutes for the failure-first step. `POST /tasks/{id}` partial-update semantics observed directly against the live API on 2026-08-27, confirming Finding 1's premise. Account guard retrofitted onto `scripts/live-smoke.js`. | Section 9 |
 | 9 | AD-4 and AD-5 recorded. Two confounded framing assertions removed and a tripwire added. Invariant 1's framing evidence replaced with a real comparison; Invariant 2's proven capable of failing. Evidence column added to section 5. All ten `[DECISION NEEDED]` items in section 7 resolved. Section 10 opened with D-1 through D-5. Section 6's stale sanitizer marks corrected. Both Session 8 open items closed. Fixture-default collision and the unverified `url` format assumption recorded as scheduled work. | Sections 4, 5, 6, 7, 8, 9, 10 |
-| 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. D-3 fixed by correcting the `find-tasks` description text only, with no behavior change; decision recorded under R21, and D-3 left section 10. Test `test/find-tasks-query-supersedes-description.test.js` reads that text from `tools/list`. D-1 fixed: `get-overview`'s tasks fetch counts up to a fixed 5000 while its project, section and label lists keep `TODOIST_MAX_ITEMS`; every count carries `is_floor`; orphaned sections and tasks are surfaced. Decision recorded under R24, and D-1 left section 10. R17's bare-array flag fixed alongside it. AD-5's list of example-agent warnings updated. Coverage recorded for `cdd670f`. | Sections 4, 5, 6, 7, 8, 10 |
+| 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. D-3 fixed by correcting the `find-tasks` description text only, with no behavior change; decision recorded under R21, and D-3 left section 10. Test `test/find-tasks-query-supersedes-description.test.js` reads that text from `tools/list`. D-1 fixed: `get-overview`'s tasks fetch counts up to a fixed 5000 while its project, section and label lists keep `TODOIST_MAX_ITEMS`; every count carries `is_floor`; orphaned sections and tasks are surfaced. Decision recorded under R24, and D-1 left section 10. R17's bare-array flag fixed alongside it. AD-5's list of example-agent warnings updated. Coverage recorded for `cdd670f`. D-2 decided: `get-overview` stops computing "today" on the server host and asks Todoist's own `today` and `overdue` filters, so the timezone is the Todoist account's own and the server holds none, replacing the open question of how a timezone would be supplied. D-2 fixed that way: the counts mean what Todoist's filters mean, deadline-only tasks included, to match the Todoist app; both filter fetches use the 5000 ceiling, and each count takes `is_floor` from its own fetch. Decision recorded under R24, and D-2 left section 10. Three unreachable fallbacks removed from the D-2 tests to restore that file's branch coverage. AD-5 updated: the example agent now carries no defect warnings. Coverage recorded for `0a5ab95`. | Sections 4, 5, 6, 7, 8, 10 |
 
 ## 1. Purpose
 
@@ -325,10 +325,13 @@ endpoint path to the new location, not to start following redirects.
   running agent's mode.
 - The example must remain honest about the server's actual behavior, not
   merely non-personal. It names real environment variables and real tool
-  names, and it carries an agent-facing warning for D-2. Its D-1
-  warning was removed when D-1 was fixed in Session 10. Those warnings
-  are part of each defect's fix criteria: when a defect in section 10 is
-  fixed, removing its warning from the example is part of fixing it.
+  names. It carries no defect warnings at present: its D-1 and D-2
+  warnings were removed when those defects were fixed in Session 10.
+  When a defect in section 10 affects what an agent should trust in tool
+  output, the example carries an agent-facing warning for it. Those
+  warnings are part of each defect's fix criteria: when a defect in
+  section 10 is fixed, removing its warning from the example is part of
+  fixing it.
 - The example is read-only, so its body text describes a process with no
   write tools registered. A write-capable definition is not a matter of
   flipping one env value; it needs its own body text, because a read-only
@@ -530,7 +533,7 @@ same call and that are not subject to `safeField` framing).
 | `find-sections` | R | `project_id`, `limit` | `id`, `name`✅, `project_id`, `order` |
 | `find-labels` | R | `limit` | `id`, `name`✅, `color`, `is_favorite`, `order` |
 | `find-comments` | R | `task_id` XOR `project_id`, `limit` | `id`, `content`✅, `task_id`, `project_id`, `posted_at`, `attachment.file_name`✅ (URL/mime/size dropped) |
-| `get-overview` | R | *(none)* | `projects[].{id,name✅,is_inbox_project,active_task_count,sections[] (names✅)}`, `labels[]` (names✅ only, no ids), `totals.{projects,active_tasks,labels,due_today,overdue}` (all computed) |
+| `get-overview` | R | *(none)* | In output order: `fetches.{projects,sections,labels,tasks,due_today,overdue}.{fetched,truncated}` (computed); `warnings[]` (computed, present only when a fetch was truncated); `totals.{projects,active_tasks,labels,due_today,overdue}`, each `{count,is_floor}` (computed; `is_floor` is the `truncated` flag of the fetch the count derives from; `due_today` and `overdue` are the counts of Todoist's `today` and `overdue` filters via `GET /tasks/filter`, evaluated in the account's timezone and including tasks with no scheduled date whose deadline is today or past); `tasks_in_unlisted_projects` `{count,is_floor}` (computed); `unmatched_sections[].{project_id,name✅}`; `labels[]` (names✅ only, no ids); `projects[].{id,name✅,is_inbox_project,active_task_count {count,is_floor},sections[] (names✅)}` |
 | `add-tasks` | W | `tasks[]`: `content`, `description`, `project_id`, `section_id`, `parent_id`, `labels[]`, `priority`, `due_string`/`due_date`/`due_datetime`, `deadline_date` | `id`, `content`✅ |
 | `update-tasks` | W | `tasks[]`: `id`, `content`, `description`, `labels[]`, `priority`, `due_string`/`due_date`/`due_datetime`, `deadline_date` | `id`, `content`✅ (reflects full current API state, not necessarily caller-supplied; `description` and `labels` are returned by the API and discarded rather than echoed) |
 | `complete-tasks` | W | `ids[]` | `ids[]` (caller-supplied, echoed back as-is, not from API) |
@@ -732,8 +735,9 @@ judgment.
   occurrences together.
 - R23. `find-comments` must require exactly one of `task_id`/`project_id`,
   throwing otherwise.
-- R24. `get-overview` must fetch projects/sections/labels/tasks concurrently
-  and fail entirely (no partial results) if any one fetch rejects.
+- R24. `get-overview` must fetch projects/sections/labels/tasks and the
+  `today` and `overdue` filters concurrently, and fail entirely (no
+  partial results) if any one fetch rejects.
 - **Superseded, Session 9.** Confirmed as a defect and scheduled. See
   section 10, D-2.
 - **DECIDED, Session 10.** Fix for D-1, formerly in section 10. The
@@ -768,6 +772,39 @@ judgment.
   `109f132`, implementation `cdd670f`. This was D-1 in section 10,
   confirmed in Session 9. D-2, "today" computed in UTC, is a different
   root cause and is not affected.
+- **DECIDED, Session 10.** Fix for D-2, formerly in section 10.
+  `get-overview` no longer computes "today" on the server host.
+  `due_today` and `overdue` are the item counts of `GET /tasks/filter`
+  with query `today` and query `overdue`, Todoist's own filters,
+  evaluated in the Todoist account's timezone. No date comparison against
+  the host clock remains and the server holds no timezone, so no
+  environment variable or per-request parameter supplies one. Floating
+  due dates and datetimes carrying their own timezone are Todoist's to
+  resolve, not this server's.
+
+  The counts mean what Todoist's filters mean, including tasks with no
+  scheduled date whose deadline is today or past. This is deliberate: the
+  overview matches the Todoist app rather than a stricter reading based
+  on scheduled dates alone.
+
+  Both filter fetches use `OVERVIEW_MAX_ITEMS`, like the tasks fetch,
+  because they are only counted and return no task text. Each is reported
+  under `fetches` as `due_today` and `overdue`, and each count takes
+  `is_floor` from its own fetch, not from the tasks fetch. A truncated
+  filter fetch adds its own warning, and the tasks-fetch warning no
+  longer names these two counts. The tool description lists
+  `/tasks/filter` among the endpoints it aggregates and says the two
+  counts come from Todoist's `today` and `overdue` filters in the
+  account's timezone.
+
+  Evidence: the D-2 tests in `test/get-overview-truncation.test.js`. They
+  count what the fake API returns for each query regardless of the tasks'
+  own dates, assert that exactly the queries `today` and `overdue` are
+  sent, and check each filter fetch's `fetches` entry and `is_floor`
+  separately, including a truncated filter fetch that marks only its own
+  count as a floor. Test-first commits `66926e0` and `ad33081`,
+  implementation `0a5ab95`. This was D-2 in section 10, confirmed in
+  Session 9.
 - R25. Every tool response, read and write alike, must be prefixed with
   `UNTRUSTED_NOTICE` and size-capped via `capOutput` (see R12). The
   prefix is applied unconditionally in `buildResult` and does not depend
@@ -869,6 +906,25 @@ All three figures are above the `25c63e1` row. `src/tools/read.js` rose
 from 77.40% / 76.92% / 71.43% at the test-first commit `109f132` to
 80.82% / 84.62% / 75.00%. `src/tools/write.js` function coverage is
 unchanged at 38.46%.
+
+Session 10, at commit `0a5ab95` (D-2 fix), measured the same way on
+Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 95.12% | 90.15% | 92.08% |
+
+All three figures are above the `cdd670f` row, and no file in `src/` or
+`test/` is below its figure at `0fce65b`, which matched `cdd670f`.
+`src/tools/read.js` rose from 80.82% / 84.62% / 75.00% to 81.40% /
+86.84% / 75.00%. The test-first commit `66926e0` dipped to 94.67% /
+88.48% / 90.57%: lines in the new tests after their first failing
+assertion could not run, and three fallback operators in
+`test/get-overview-truncation.test.js` could run only when a test was
+already failing, which put that file's branch coverage at 94.87%
+against 97.83%. `ad33081` removed the three fallbacks without changing
+any expectation, and the file is now at 98.67%. `src/tools/write.js`
+function coverage is unchanged at 38.46%.
 
 Notes:
 
@@ -1017,38 +1073,9 @@ fails if it returns.
 
 Fixed in Session 10 by counting tasks up to a fixed 5000 and marking every count from a truncated fetch as a floor; see section 7, R24. This number is retired, not reused.
 
-### D-2 — `get-overview` computes "today" in UTC on the server host
+### D-2
 
-**Confirmed** by reading `src/tools/read.js` during Session 9. Also flagged
-in both source documents.
-
-`due_today` and `overdue` are computed by string-comparing each task's
-`due.date` against `new Date().toISOString().slice(0, 10)`, which is always
-UTC on the host. For a user in a non-UTC zone, tasks are misclassified near
-the date boundary. For a US Eastern user, every evening after 8pm local is
-already tomorrow in UTC.
-
-Same tool as D-1 and the same two output fields, but a different root cause.
-Fixing one does not fix the other.
-
-**DECIDED, Session 10.** `get-overview` stops computing "today" itself.
-It asks Todoist's own `today` and `overdue` filters instead, so the
-timezone is the Todoist account's own. This replaces the open question of
-how a timezone is supplied: neither an environment variable nor a
-per-request parameter is needed, because the server no longer holds a
-timezone at all.
-
-**Fix criteria:**
-
-- The response states that `due_today` and `overdue` come from Todoist's
-  filters, evaluated in the Todoist account's timezone.
-- Floating due dates versus datetimes carrying their own timezone are
-  handled by Todoist, not by this server.
-- The two new fetches carry the same `is_floor` and truncation signals as
-  the other four: each is reported under `fetches`, and a count derived
-  from a truncated fetch is marked as a floor.
-
-**Owner:** Session 10 or later. Gates publishing.
+Fixed in Session 10 by counting `due_today` and `overdue` from Todoist's own `today` and `overdue` filters; see section 7, R24. This number is retired, not reused.
 
 ### D-3
 

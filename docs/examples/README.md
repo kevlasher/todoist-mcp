@@ -99,11 +99,12 @@ connected and no tools from it. Copy the file into `.claude/agents/` or
 ## Keeping the example honest
 
 The example is not merely non-personal. It names real environment variables
-and real tool names, and it carries agent-facing warnings for those defects
-in section 10 of `docs/SPEC.md` that affect what an agent should trust in
-tool output. Those warnings are part of each defect's fix criteria: when a
-defect is fixed, removing its warning from this example is part of fixing
-it.
+and real tool names. When a defect in section 10 of `docs/SPEC.md` affects
+what an agent should trust in tool output, the example carries an
+agent-facing warning for it. No open defect does, so the example currently
+carries no defect warnings. Those warnings are part of each defect's fix
+criteria: when a defect is fixed, removing its warning from this example is
+part of fixing it.
 
 The example is documentation. It is deliberately not kept in sync with any
 live definition, and nothing should assume that it is. See AD-5 in

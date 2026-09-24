@@ -15,10 +15,16 @@ machine.
 
 - Branch: `main`, which now matches `remediation/audit-2026-08` and is
   pushed to `origin`.
-- Tests: 101/101 passing, under Node 20 (see section 8).
+- Tests: 108/108 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 9 are complete. **Resume at Session 10** — see
-  section 7.
+- Sessions 1 through 10 are complete; section 7 records Session 10.
+  **Next: publication preparation.** Before the repository goes public:
+  - the independent code review, whose prompt was written on
+    2026-09-16;
+  - the free scanning stack on GitHub, with CI running the suite under
+    Node 20;
+  - a final read of `README.md`;
+  - a sweep of em dashes from the published files.
 - Six architecture decisions recorded in `docs/SPEC.md` section 4:
   AD-1 (mode selection belongs to the agent layer), AD-2 (URLs defanged,
   not deleted), AD-3 (all redirects refused), AD-4 (the untrusted-content
@@ -192,11 +198,9 @@ directly; don't try to revive this one.
 
 ## 7. Session 10 and beyond
 
-Section 10 of `docs/SPEC.md` holds D-2 and D-4 with fix criteria.
-They don't all gate publishing:
-
-- **Gates publishing:** D-2.
-- **Does not gate publishing:** D-4.
+Section 10 of `docs/SPEC.md` holds D-4 with fix criteria. No defect
+gating publication remains: D-2, the last one, is done. D-4 does not gate
+publishing.
 
 **D-5: done, Session 10.** The `url` field is removed from tool output
 rather than guarded, recorded as AD-6 in `docs/SPEC.md` section 4. D-5
@@ -227,17 +231,19 @@ tasks are surfaced instead of dropped. Decision recorded under R24 in
 `docs/SPEC.md` section 7; D-1 has left section 10. Test-first commit
 `109f132`, implementation `cdd670f`.
 
-D-2 is next and is now the only gating defect: `due_today` and `overdue`
-are computed against UTC "today" on the server host. The approach is
-decided and recorded in `docs/SPEC.md` section 10, D-2, under **DECIDED,
-Session 10**: ask Todoist's own `today` and `overdue` filters, so the
-timezone is the Todoist account's own, with the two new fetches carrying
-the same `is_floor` and truncation signals as the other four.
-The D-1 tests in `test/get-overview-truncation.test.js` use a fake API
-that serves only `/projects`, `/sections`, `/labels` and `/tasks`, and
-throws on any other path. Once `get-overview` queries `/tasks/filter`,
-that fake must answer it too, or every D-1 test will fail for a fixture
-reason rather than a behavior one.
+**D-2: done, Session 10.** `get-overview` no longer computes "today" on
+the server host. `due_today` and `overdue` are the counts of Todoist's own
+`today` and `overdue` filters, fetched from `/tasks/filter` and evaluated
+in the Todoist account's timezone, so they include tasks with no scheduled
+date whose deadline is today or past, matching the Todoist app. Both
+filter fetches use the 5000 ceiling, each has its own entry under
+`fetches`, and each count takes `is_floor` from its own fetch. The example
+agent's D-2 warning is removed, and it now carries no defect warnings.
+Decision recorded under R24 in `docs/SPEC.md` section 7; D-2 has left
+section 10. Test-first commits `66926e0` and `ad33081`, implementation
+`0a5ab95`.
+
+Session 10 fixed the defects in the order D-5, D-3, D-1, D-2.
 
 D-4 does not gate publishing: token-source error messages name the wrong
 environment variable in some cases (an operator who configured

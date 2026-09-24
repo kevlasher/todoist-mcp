@@ -60,7 +60,7 @@ Read tools are registered in **all** modes. Write tools are registered **only** 
 | `find-sections` | `GET /sections` (optionally `?project_id=`) |
 | `find-labels` | `GET /labels` |
 | `find-comments` | `GET /comments?task_id=` **or** `?project_id=` (exactly one required) |
-| `get-overview` | Aggregates `GET /projects` + `GET /sections` + `GET /labels` + `GET /tasks` into a compact overview (per-project active-task counts, sections, labels, due-today / overdue counts). Task counts cover up to 5000 active tasks, a fixed ceiling independent of `TODOIST_MAX_ITEMS`, because tasks are only counted and no task text is returned. Project, section and label lists follow `TODOIST_MAX_ITEMS`, because their names are returned. Every count is `{ count, is_floor }`: `is_floor: true` means the fetch it came from was truncated, so the count is a minimum, not exact. Per-fetch truncation is reported under `fetches`, `warnings` appears only when something was truncated, and sections or tasks whose project is missing from the projects fetch are reported in `unmatched_sections` and `tasks_in_unlisted_projects` rather than dropped. "Today" is still computed in UTC on the server host, not any particular timezone; see Known defects, D-2. This tool takes no `limit` argument, unlike the other read tools. |
+| `get-overview` | Aggregates `GET /projects` + `GET /sections` + `GET /labels` + `GET /tasks` + `GET /tasks/filter` into a compact overview (per-project active-task counts, sections, labels, due-today / overdue counts). Task counts cover up to 5000 active tasks, a fixed ceiling independent of `TODOIST_MAX_ITEMS`, because tasks are only counted and no task text is returned. Project, section and label lists follow `TODOIST_MAX_ITEMS`, because their names are returned. Every count is `{ count, is_floor }`: `is_floor: true` means the fetch it came from was truncated, so the count is a minimum, not exact. Per-fetch truncation is reported under `fetches`, `warnings` appears only when something was truncated, and sections or tasks whose project is missing from the projects fetch are reported in `unmatched_sections` and `tasks_in_unlisted_projects` rather than dropped. `due_today` and `overdue` come from Todoist's own `today` and `overdue` filters, evaluated in the Todoist account's timezone, and include tasks with no scheduled date whose deadline is today or past, matching the Todoist app. Each filter fetch also counts up to 5000 tasks, is reported under `fetches`, and sets its own count's `is_floor`. This tool takes no `limit` argument, unlike the other read tools. |
 
 ### Write tools (only when `TODOIST_READONLY=false`)
 
@@ -110,11 +110,9 @@ These aren't gaps scheduled to close — they're inherent to what a tool-registr
 
 ## Known defects
 
-One defect that affects tool output is open: D-2, already qualified above, next to the tool it affects. It is named again here because an agent or operator shouldn't have to go find `docs/SPEC.md` to learn what's actually wrong. Full root cause and fix criteria live in `docs/SPEC.md` section 10.
+No open defect affects tool output. Full root cause and fix criteria for every open defect live in `docs/SPEC.md` section 10.
 
-- **D-2 — `get-overview` computes "today" in UTC on the server host,** not in any particular user's timezone, misclassifying tasks near the date boundary.
-
-A second item, D-4, is a startup configuration error message that names the wrong environment variable in some cases — it's noted under Configuration below rather than here, since it affects an operator's setup error, not tool output an agent or caller ever sees.
+One defect remains open. D-4 is a startup configuration error message that names the wrong environment variable in some cases. It's noted under Configuration below rather than here, since it affects an operator's setup error, not tool output an agent or caller ever sees.
 
 ---
 
