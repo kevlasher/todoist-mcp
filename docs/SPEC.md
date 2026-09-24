@@ -26,6 +26,7 @@ Maintenance: one row per session, added when the session ends.
 | 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. D-3 fixed by correcting the `find-tasks` description text only, with no behavior change; decision recorded under R21, and D-3 left section 10. Test `test/find-tasks-query-supersedes-description.test.js` reads that text from `tools/list`. D-1 fixed: `get-overview`'s tasks fetch counts up to a fixed 5000 while its project, section and label lists keep `TODOIST_MAX_ITEMS`; every count carries `is_floor`; orphaned sections and tasks are surfaced. Decision recorded under R24, and D-1 left section 10. R17's bare-array flag fixed alongside it. AD-5's list of example-agent warnings updated. Coverage recorded for `cdd670f`. D-2 decided: `get-overview` stops computing "today" on the server host and asks Todoist's own `today` and `overdue` filters, so the timezone is the Todoist account's own and the server holds none, replacing the open question of how a timezone would be supplied. D-2 fixed that way: the counts mean what Todoist's filters mean, deadline-only tasks included, to match the Todoist app; both filter fetches use the 5000 ceiling, and each count takes `is_floor` from its own fetch. Decision recorded under R24, and D-2 left section 10. Three unreachable fallbacks removed from the D-2 tests to restore that file's branch coverage. AD-5 updated: the example agent now carries no defect warnings. Coverage recorded for `0a5ab95`. | Sections 4, 5, 6, 7, 8, 10 |
 | 11 | Independent code review of 2026-09-24 recorded verbatim in `docs/reviews/`. Seven findings reproduced against `04c46ec` and recorded as D-6 through D-12, which gate publication: URL reconstruction and undefanged URL forms, unsanitized and uncapped error results, a throwing numeric entity, dot-segment task ids, read-tool `limit` above `TODOIST_MAX_ITEMS`, an unguarded live script, and two tests that pass while their property is violated. The review's other findings recorded as D-13 through D-22, which do not gate publication. Invariants 1, 2 and 4 marked VIOLATED; 6, 8, 9 and 10 qualified; a VIOLATED status defined. No code or test changes. | Sections 5, 10 |
 | 12 | D-12 fixed in `6a99b01`, tests only. `test/client.test.js`'s token test now registers a 40-character token and asserts it is absent from the error message, proven by removing the error detail's redaction in `src/client.js`. The `find-tasks` regression check now requires success and the fixture task before asserting no `url`, proven by a throwing handler. Static check `test/calltool-asserts-iserror.test.js` added for the bug class; it found three more tests in `test/mcp-e2e.test.js`, each now asserting success first. AD-6 Evidence and Invariant 4's citation updated. D-12 left section 10; D-22 scope noted. Coverage recorded for `6a99b01`. | Sections 4, 5, 8, 10 |
+| 13 | D-11 fixed: `scripts/live-smoke-date.js` now calls `verifyContractTestAccount` before any request and loads config with `TODOIST_API_KEY` set to the verified contract token and `TODOIST_API_KEY_FILE` removed, as `scripts/live-smoke.js` does. Test-first `e96d3fe`, implementation `9d4bd71`. `test/live-smoke-date-account-guard.test.js` runs the script with `fetch` stubbed, so no request leaves the machine. Static check `test/live-write-paths-guarded.test.js` added for the bug class across `scripts/` and `test-contract/`; it found no other offender, and removing the guard from `scripts/live-smoke.js` turns it red. `README.md` lists three guarded live paths and its Layout block includes the script. D-21's weaknesses left open. D-11 left section 10. Coverage recorded for `9d4bd71`, with a note on child-process coverage. | Sections 8, 10 |
 
 ## 1. Purpose
 
@@ -958,6 +959,36 @@ that runs the detector on a planted source now exercises that code.
 The commit changes tests only. `src/tools/write.js` function coverage is
 unchanged at 38.46%.
 
+Session 13, at commit `9d4bd71` (D-11 fix), measured the same way on
+Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 95.58% | 90.86% | 92.88% |
+
+All three figures are above the `6a99b01` row. No file present at
+`193257a` changed its figures; the rise comes from the two new test
+files, `test/live-smoke-date-account-guard.test.js` and
+`test/live-write-paths-guarded.test.js`. The test-first commit `e96d3fe`
+measured 95.58% / 90.84% / 92.54%, also above `6a99b01`: a callback in
+the new behavioral test could not run while the assertion before it
+failed. The commits change tests and `scripts/` only.
+`src/tools/write.js` function coverage is unchanged at 38.46%.
+
+Child-process coverage. `test/live-smoke-date-account-guard.test.js`
+runs `scripts/live-smoke-date.js` as a child process. When
+`NODE_V8_COVERAGE` is set, Node's `child_process` copies it into a
+child's environment if the key is missing, so deleting it from the
+child's environment does not stop the child reporting coverage. A first
+version of the test, never committed, merged the script into these
+figures at 50.47% lines and pulled All files down to 93.22% / 88.08% /
+91.48%. That was a change in what was measured, not coverage lost from
+any existing file. The test now points `NODE_V8_COVERAGE` at its own
+temporary directory, which it deletes, so these figures cover `src/`
+and `test/` only, like every row above. Scripts are not measured. Any
+later test that spawns a Node process must do the same, or its row is
+not comparable with this one.
+
 Notes:
 
 - This figure includes test files themselves in the denominator (Node
@@ -1115,9 +1146,10 @@ exact input and output given; **by reading** means established from the
 code only; **review only** means taken from the review and not checked
 again.
 
-**Publication gate.** D-6 through D-12 gate publication; D-12 is fixed.
-D-13 through D-22 do not. While D-6, D-7, D-8 or D-10 is open, `README.md`'s "Known
-defects" statement "No open defect affects tool output" is false.
+**Publication gate.** D-6 through D-12 gate publication; D-11 and D-12
+are fixed. D-13 through D-22 do not. While D-6, D-7, D-8 or D-10 is
+open, `README.md`'s "Known defects" statement "No open defect affects
+tool output" is false.
 
 ### D-1
 
@@ -1385,44 +1417,9 @@ large `limit` pages until the API stops returning a cursor.
 - Tests use a `maxItems` that differs from the default (section 8), and
   each fails against `04c46ec`.
 
-### D-11: `scripts/live-smoke-date.js` writes to whatever account its token opens
+### D-11
 
-**Gates publication.** **Reproduced.** Review property 22 and section 3.
-
-The script takes its token from `TODOIST_API_KEY` or
-`TODOIST_API_KEY_FILE` through `loadConfig`, never calls
-`verifyContractTestAccount`, and creates and completes a task.
-
-Reproduction, with `fetch` stubbed so no request left the machine:
-`TODOIST_API_KEY=not-a-real-token-000`, `TODOIST_READONLY=false`,
-`TODOIST_CONTRACT_TEST_TOKEN` and `TODOIST_CONTRACT_TEST_ACCOUNT_ID`
-unset. Requests, in order: `POST /api/v1/tasks`, five of
-`GET /api/v1/tasks/filter`, `POST /api/v1/tasks/T1/close`,
-`GET /api/v1/tasks`. There was no `GET /user`, and the first request was
-a write. The script exited 1 because its own checks failed on the stub's
-empty filter results, not because anything refused to run.
-
-**Claims this makes false:**
-
-- `README.md`, Tests: "Two further layers do touch a live account, and
-  both are guarded against writing to the wrong one." There are three,
-  and this one is unguarded. The README's Layout block also omits the
-  script.
-- `docs/RESUME.md` section 4, which said two places can write to a live
-  account. Corrected on 2026-09-24.
-
-**Fix criteria:**
-
-- The script calls `verifyContractTestAccount` before its first request
-  and uses only the verified contract token, removing `TODOIST_API_KEY`
-  and `TODOIST_API_KEY_FILE` from the environment it loads config from,
-  as `scripts/live-smoke.js` does.
-- Treated as a bug class: any file in `scripts/` or `test-contract/` that
-  can send a non-GET request. A static test fails if such a file does
-  not call the guard before its first request. It is proven by removing
-  the guard from `scripts/live-smoke.js` and watching it fail.
-- `README.md` lists all three live paths and the Layout block includes
-  the script.
+Fixed in Session 13, test-first `e96d3fe` and implementation `9d4bd71`, by adding the account guard `scripts/live-smoke.js` uses to `scripts/live-smoke-date.js`; see the Session 13 row of the Decision log, `test/live-smoke-date-account-guard.test.js` and the bug-class check `test/live-write-paths-guarded.test.js`. D-21's weaknesses in the guard and the scripts remain open. This number is retired, not reused.
 
 ### D-12
 

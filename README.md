@@ -175,15 +175,25 @@ TODOIST_READONLY=false node scripts/stdio-check.js
 
 `npm test` runs `node --test test/` and never touches the network. `scripts/stdio-check.js` doesn't either — it boots the real server process (`src/index.js`) over stdio with a fake token and lists which tools registered, to confirm the read-only vs. read/write split against an actually spawned process rather than the in-process test harness.
 
-Two further layers do touch a live account, and both are guarded against writing to the wrong one:
+Three paths do touch a live account, and all three are guarded against writing to the wrong one:
 
 ```bash
 # live write round-trip against the verified contract test account
 TODOIST_CONTRACT_TEST_TOKEN=xxxxx TODOIST_CONTRACT_TEST_ACCOUNT_ID=yyyyy \
   TODOIST_READONLY=false node scripts/live-smoke.js
+
+# live find-tasks-by-date check against the verified contract test account
+TODOIST_CONTRACT_TEST_TOKEN=xxxxx TODOIST_CONTRACT_TEST_ACCOUNT_ID=yyyyy \
+  TODOIST_READONLY=false node scripts/live-smoke-date.js
+
+# live-API contract tests against the verified contract test account
+TODOIST_CONTRACT_TEST_TOKEN=xxxxx TODOIST_CONTRACT_TEST_ACCOUNT_ID=yyyyy \
+  node test-contract/update-task-partial.contract.js
 ```
 
 `scripts/live-smoke.js` (also runnable as `npm run smoke`, its package.json alias — the same environment variables are still required) performs a real add / read-back / complete round-trip. Before sending any request, it verifies that `TODOIST_CONTRACT_TEST_TOKEN` belongs to the account named by `TODOIST_CONTRACT_TEST_ACCOUNT_ID` (`test-contract/account-guard.js`) and refuses to run against any other account. Every call after that uses the verified contract-test token, never `TODOIST_API_KEY` — the script strips both `TODOIST_API_KEY` and `TODOIST_API_KEY_FILE` from the environment before loading config, so this doesn't depend on either being unset by whoever runs it.
+
+`scripts/live-smoke-date.js` creates a throwaway task due today, calls `find-tasks-by-date` with each of its presets, then completes the task. It is guarded exactly as `scripts/live-smoke.js` is: it verifies the contract test account before sending any request, and it loads config with `TODOIST_API_KEY` set to the verified contract-test token and `TODOIST_API_KEY_FILE` removed. It takes no token from `TODOIST_API_KEY` or `TODOIST_API_KEY_FILE`.
 
 `test-contract/` holds a separate suite that asks the live Todoist API direct questions about its own behavior (for example, exactly which fields `POST /tasks/{id}` returns on a partial update), rather than testing this server's own code. It runs only when `TODOIST_CONTRACT_TEST_TOKEN` is set, is account-guarded the same way as the smoke script, and is deliberately excluded from `npm test` and from any test-on-save hook, so a live API call never fires as a side effect of editing a file.
 
@@ -213,6 +223,8 @@ scripts/
   stdio-check.js  list tools from a real spawned process
   live-smoke.js   live write round-trip (needs TODOIST_CONTRACT_TEST_TOKEN and
                   TODOIST_CONTRACT_TEST_ACCOUNT_ID; refuses any other account)
+  live-smoke-date.js  live find-tasks-by-date check with a throwaway task (same
+                      variables and account guard as live-smoke.js)
 test/             offline test suite
 test-contract/    live-API contract tests (token-gated, account-guarded, excluded from npm test)
 docs/
