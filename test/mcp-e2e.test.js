@@ -87,6 +87,7 @@ test('read tool output is framed and strips markup; token never leaks', async ()
   try {
     const client = await connect(testCfg);
     const res = await client.callTool({ name: 'find-projects', arguments: {} });
+    assert.ok(!res.isError, `find-projects returned an error: ${res.content?.[0]?.text}`);
     const text = res.content.map((c) => c.text).join('\n');
 
     assert.ok(!text.includes('<b>'), 'HTML should be stripped');
@@ -159,6 +160,7 @@ test('write tool echoes framed/stripped/capped content, exactly as a read tool w
       name: 'update-tasks',
       arguments: { tasks: [{ id: '999' }] },
     });
+    assert.ok(!res.isError, `update-tasks returned an error: ${res.content?.[0]?.text}`);
     const text = res.content.map((c) => c.text).join('\n');
 
     assert.ok(!text.includes('<b>'), 'HTML should be stripped');
@@ -251,6 +253,7 @@ test('read tool enforces the output-size cap on a large list', async () => {
   try {
     const client = await connect(cfg({ readOnly: true, maxOutputChars: 2000 }));
     const res = await client.callTool({ name: 'find-tasks', arguments: {} });
+    assert.ok(!res.isError, `find-tasks returned an error: ${res.content?.[0]?.text}`);
     const text = res.content.map((c) => c.text).join('\n');
     assert.ok(text.includes('output truncated'), 'large output should be capped');
     await client.close();
