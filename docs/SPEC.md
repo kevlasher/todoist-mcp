@@ -646,7 +646,12 @@ judgment.
   entities, replace markdown links/images with their visible label only
   (discarding the URL), defang code/emphasis/heading/table/blockquote
   markup characters, and strip control characters while preserving tab/
-  newline.
+  newline. A numeric entity whose code point is invalid (zero, a surrogate
+  0xD800 to 0xDFFF, or above 0x10FFFF, including digit runs too large for
+  a double) decodes to U+FFFD, as the HTML standard does for invalid
+  numeric character references; valid numeric entities decode to their
+  code point. `stripMarkup` and `safeField` must not throw for any string
+  input (D-8, Session 14).
 - R11. `safeField` must return unframed empty string for empty/whitespace-
   only/markup-only input, must neutralize literal fence-marker strings found
   inside the value (preventing forged fence boundaries), and must truncate
@@ -975,6 +980,23 @@ the new behavioral test could not run while the assertion before it
 failed. The commits change tests and `scripts/` only.
 `src/tools/write.js` function coverage is unchanged at 38.46%.
 
+Session 14, at commit `bf2124d` (D-8 fix), measured the same way on
+Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 96.20% | 92.19% | 94.15% |
+
+All three figures are above the `9d4bd71` row, which `cf3e367` matched
+(95.58% / 90.86% / 92.88%), and no file present at `cf3e367` lost
+coverage. `src/sanitize.js` branches rose from 83.33% to 86.67%, and
+`src/shape.js` rose from 84.04% / 43.75% / 75.00% to 100.00% / 84.00% /
+100.00%, because the new bug-class test drives every shaper through
+every framed field. The test-first commit `be91ced` measured 96.23% /
+93.11% / 93.52%: the new test file's offender-reporting paths ran only
+while the tests were failing, and the implementation stopped them
+running. `src/tools/write.js` function coverage is unchanged at 38.46%.
+
 Child-process coverage. `test/live-smoke-date-account-guard.test.js`
 runs `scripts/live-smoke-date.js` as a child process. When
 `NODE_V8_COVERAGE` is set, Node's `child_process` copies it into a
@@ -1146,8 +1168,8 @@ exact input and output given; **by reading** means established from the
 code only; **review only** means taken from the review and not checked
 again.
 
-**Publication gate.** D-6 through D-12 gate publication; D-11 and D-12
-are fixed. D-13 through D-22 do not. While D-6, D-7, D-8 or D-10 is
+**Publication gate.** D-6 through D-12 gate publication; D-8, D-11 and
+D-12 are fixed. D-13 through D-22 do not. While D-6, D-7 or D-10 is
 open, `README.md`'s "Known defects" statement "No open defect affects
 tool output" is false.
 
@@ -1298,39 +1320,9 @@ AD-4 is not made false: it scopes the notice to successful responses.
   asserts no `<b>`, no `https://`, the framed text as a literal expected
   string, and total length within the bound.
 
-### D-8: One out-of-range numeric entity turns a whole read into an error
+### D-8
 
-**Gates publication.** **Reproduced.** Review property 14.
-
-`decodeHtmlEntities` passes every numeric entity to
-`String.fromCodePoint`, which throws `RangeError` above `0x10FFFF`. The
-throw escapes `stripMarkup`, `safeField` and the shaper, and the handler's
-`catch` turns the whole call into an error. Anyone who can write text into
-a task, project, section, label or comment can therefore stop every read
-tool that returns that object. That includes `get-overview` when the text
-is in a project, section or label name. This is the section 2 adversary
-using an availability path the spec does not mention.
-
-Reproduction: `fetch` stubbed so `GET /tasks` returns two tasks, with
-content `fine task` and `bad &#x110000; entity`; `find-tasks` called with
-`{}`. Result: `isError: true`, text `Error: Invalid code point 1114112`.
-The valid task is not returned either. The decimal form (`&#1114112;`)
-goes through the same call; that is by reading, not reproduced.
-
-**Claims this makes false:** none stated directly. R10 requires entities
-to be decoded and is silent on invalid ones. Recorded as gating because of
-the availability consequence above.
-
-**Fix criteria:**
-
-- `stripMarkup` and `safeField` do not throw for any string input. An
-  out-of-range or otherwise invalid numeric entity becomes U+FFFD or stays
-  as literal text. Which one is recorded under R10.
-- Tests cover hex and decimal forms at `0x110000` and at a value too large
-  for a double to hold exactly. Each fails against `04c46ec`.
-- Treated as a bug class: any exception raised while shaping one item
-  fails the whole result. Every shaper and every decoding or parsing call
-  it makes is checked for throws on hostile input.
+Fixed in Session 14 by decoding an invalid numeric entity to U+FFFD instead of passing it to `String.fromCodePoint`; see section 7, R10. This number is retired, not reused.
 
 ### D-9: Dot-segment task ids leave the task resource path
 
@@ -1510,6 +1502,21 @@ returns that string unchanged, URL included. The same applies by reading
 to every field section 6 leaves unmarked, and to ids echoed by the write
 tools. Whether Todoist ever returns such values is not established.
 
+Two wrong-typed values throw rather than pass through, and one throw
+fails the whole read, as D-8 did. Found by D-8's bug-class check in
+Session 14 and **reproduced** at `bf2124d`:
+
+- A text field holding a JSON object whose own `toString` is not a
+  function, e.g. `content: {"toString": 1}`: `stripMarkup` and
+  `safeField` throw `TypeError: Cannot convert object to primitive
+  value` from `String(input)`.
+- A `null` item in a results array: every shaper throws `TypeError` on
+  its first property read (`t.id`).
+
+Neither can come from the section 2 adversary, who writes text, not JSON
+structure. D-8's fix covers string input only; these are left for this
+entry.
+
 **Claim this weakens:** section 6, "Finding 1's injection surface is
 closed. Every echoed field originating as Todoist-writable text routes
 through `safeField`." That holds only if the unmarked fields cannot carry
@@ -1519,6 +1526,8 @@ text, which nothing here checks.
 type (id pattern, integer 1 to 4, boolean, ISO date or datetime, IANA
 timezone name, known color name), and a value that fails becomes `null`.
 Tests feed each shaper a wrong-typed value for every such field.
+No shaper throws on a wrong-typed text field or a non-object item, and
+what each becomes is recorded here.
 
 ### D-17: Redaction misses short tokens, escaped tokens and Basic credentials
 
