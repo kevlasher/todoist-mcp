@@ -139,6 +139,7 @@ export function createClient(config) {
     const cap = maxItems ?? config.maxItems;
     const items = [];
     let cursor;
+    let bareArrayFull = false;
     // The API caps limit at 200; ask for what we still need, bounded to 200.
     do {
       const pageLimit = Math.min(200, cap - items.length);
@@ -147,8 +148,11 @@ export function createClient(config) {
         query: { ...query, limit: pageLimit, cursor },
       });
       if (Array.isArray(page)) {
-        // Some endpoints may return a bare array; no further pages.
+        // Some endpoints may return a bare array; no further pages. With no
+        // cursor to say whether more exists, a page that came back full at
+        // the requested limit must be treated as truncated (R17).
         items.push(...page);
+        bareArrayFull = page.length >= pageLimit;
         break;
       }
       const results = page?.results ?? [];
@@ -156,7 +160,10 @@ export function createClient(config) {
       cursor = page?.next_cursor ?? undefined;
     } while (cursor && items.length < cap);
 
-    return { items: items.slice(0, cap), truncated: items.length >= cap && !!cursor };
+    return {
+      items: items.slice(0, cap),
+      truncated: bareArrayFull || (items.length >= cap && !!cursor),
+    };
   }
 
   return { request, getPaginated };

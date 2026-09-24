@@ -20,6 +20,12 @@ import {
 } from '../shape.js';
 import { buildResult } from '../result.js';
 
+/**
+ * Fixed ceiling for get-overview's tasks fetch (D-1). Deliberately not
+ * configurable and not TODOIST_MAX_ITEMS: see the comment in the handler.
+ */
+export const OVERVIEW_MAX_ITEMS = 5000;
+
 export function registerReadTools(server, client, cfg) {
   const registered = [];
   const add = (name, config, handler) => {
@@ -291,21 +297,35 @@ export function registerReadTools(server, client, cfg) {
       description:
         'A compact GTD overview: projects with active-task counts, section names, label ' +
         'names, and counts of tasks due today / overdue. Aggregates GET /projects, ' +
-        '/sections, /labels and /tasks. Size-capped.',
+        '/sections, /labels and /tasks. Task counts cover up to 5000 active tasks; ' +
+        'project, section and label lists follow the normal item cap. Each count is ' +
+        '{ count, is_floor }: when is_floor is true the count is a minimum, not exact. ' +
+        'Size-capped.',
       inputSchema: {},
     },
     async () => {
+      // Tasks are only counted, never returned, so counting more of them does
+      // not widen the untrusted text reaching the agent (D-1). Projects,
+      // sections and labels return attacker-writable names and keep the
+      // configured cap.
       const [projRes, secRes, labelRes, taskRes] = await Promise.all([
         client.getPaginated('/projects', {}, cfg.maxItems),
         client.getPaginated('/sections', {}, cfg.maxItems),
         client.getPaginated('/labels', {}, cfg.maxItems),
-        client.getPaginated('/tasks', {}, cfg.maxItems),
+        client.getPaginated('/tasks', {}, OVERVIEW_MAX_ITEMS),
       ]);
+      const counted = (count, res) => ({ count, is_floor: res.truncated });
 
       const today = new Date().toISOString().slice(0, 10);
+      const projectIds = new Set(projRes.items.map((p) => p.id));
       const sectionsByProject = new Map();
+      const unmatchedSections = [];
       for (const s of secRes.items) {
         const shaped = shapeSection(s, cfg);
+        if (!projectIds.has(s.project_id)) {
+          unmatchedSections.push({ project_id: shaped.project_id, name: shaped.name });
+          continue;
+        }
         if (!sectionsByProject.has(s.project_id)) sectionsByProject.set(s.project_id, []);
         sectionsByProject.get(s.project_id).push(shaped.name);
       }
@@ -313,8 +333,13 @@ export function registerReadTools(server, client, cfg) {
       const counts = new Map();
       let dueToday = 0;
       let overdue = 0;
+      let unlistedTasks = 0;
       for (const t of taskRes.items) {
-        counts.set(t.project_id, (counts.get(t.project_id) ?? 0) + 1);
+        if (projectIds.has(t.project_id)) {
+          counts.set(t.project_id, (counts.get(t.project_id) ?? 0) + 1);
+        } else {
+          unlistedTasks += 1;
+        }
         const d = t.due?.date;
         if (d) {
           if (d === today) dueToday += 1;
@@ -328,23 +353,61 @@ export function registerReadTools(server, client, cfg) {
           id: shaped.id,
           name: shaped.name,
           is_inbox_project: shaped.is_inbox_project,
-          active_task_count: counts.get(p.id) ?? 0,
+          active_task_count: counted(counts.get(p.id) ?? 0, taskRes),
           sections: sectionsByProject.get(p.id) ?? [],
         };
       });
 
+      const fetches = {
+        projects: { fetched: projRes.items.length, truncated: projRes.truncated },
+        sections: { fetched: secRes.items.length, truncated: secRes.truncated },
+        labels: { fetched: labelRes.items.length, truncated: labelRes.truncated },
+        tasks: { fetched: taskRes.items.length, truncated: taskRes.truncated },
+      };
+      const warnings = [];
+      if (projRes.truncated) {
+        warnings.push(
+          `projects fetch was truncated at ${fetches.projects.fetched} items; totals.projects ` +
+            'is a floor, and unlisted projects\' sections and tasks appear under ' +
+            'unmatched_sections and tasks_in_unlisted_projects.'
+        );
+      }
+      if (secRes.truncated) {
+        warnings.push(
+          `sections fetch was truncated at ${fetches.sections.fetched} items; ` +
+            'section lists and unmatched_sections may be incomplete.'
+        );
+      }
+      if (labelRes.truncated) {
+        warnings.push(
+          `labels fetch was truncated at ${fetches.labels.fetched} items; totals.labels ` +
+            'is a floor and the labels list is incomplete.'
+        );
+      }
+      if (taskRes.truncated) {
+        warnings.push(
+          `tasks fetch was truncated at ${fetches.tasks.fetched} items; active_tasks, ` +
+            "due_today, overdue, tasks_in_unlisted_projects and every project's " +
+            'active_task_count are floors (at least this many), not exact.'
+        );
+      }
+
+      // Signal keys come before the name lists: capOutput cuts from the end.
       return buildResult(cfg, {
         payload: {
+          fetches,
+          ...(warnings.length > 0 ? { warnings } : {}),
           totals: {
-            projects: projRes.items.length,
-            active_tasks: taskRes.items.length,
-            labels: labelRes.items.length,
-            due_today: dueToday,
-            overdue,
+            projects: counted(projRes.items.length, projRes),
+            active_tasks: counted(taskRes.items.length, taskRes),
+            labels: counted(labelRes.items.length, labelRes),
+            due_today: counted(dueToday, taskRes),
+            overdue: counted(overdue, taskRes),
           },
+          tasks_in_unlisted_projects: counted(unlistedTasks, taskRes),
+          unmatched_sections: unmatchedSections,
           labels: labelRes.items.map((l) => shapeLabel(l, cfg).name),
           projects,
-          note: 'Counts reflect up to the configured item cap; large accounts may be truncated.',
         },
       });
     }
