@@ -15,7 +15,7 @@ machine.
 
 - Branch: `main`, which now matches `remediation/audit-2026-08` and is
   pushed to `origin`.
-- Tests: 86/86 passing, under Node 20 (see section 8).
+- Tests: 101/101 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
 - Sessions 1 through 9 are complete. **Resume at Session 10** — see
   section 7.
@@ -192,10 +192,10 @@ directly; don't try to revive this one.
 
 ## 7. Session 10 and beyond
 
-Section 10 of `docs/SPEC.md` holds D-1, D-2 and D-4 with fix criteria.
+Section 10 of `docs/SPEC.md` holds D-2 and D-4 with fix criteria.
 They don't all gate publishing:
 
-- **Gates publishing:** D-1, D-2.
+- **Gates publishing:** D-2.
 - **Does not gate publishing:** D-4.
 
 **D-5: done, Session 10.** The `url` field is removed from tool output
@@ -217,15 +217,27 @@ Decision recorded under R21 in `docs/SPEC.md` section 7; D-3 has left
 section 10. Test-first commits `35fb240` and `fc67322`, implementation
 `3d1f86b`.
 
-D-1 is next, and remains the most significant gating defect: every count
-`get-overview` returns is derived from fetches capped at
-`TODOIST_MAX_ITEMS`, so an account with more than 200 active tasks gets
-wrong counts, and the four `truncated` flags that would signal this are
-discarded in favour of an unconditional note. D-2 carries an open decision
-that must be made before it can be fixed: how the timezone used for
-"today" is supplied is not decided — an environment variable read once at
-startup and a per-request parameter have different consequences for a
-long-lived shared process.
+**D-1: done, Session 10.** `get-overview`'s tasks fetch counts up to a
+fixed `OVERVIEW_MAX_ITEMS = 5000`; its project, section and label lists
+keep `TODOIST_MAX_ITEMS`, because their names are attacker-writable text
+that reaches the agent, while tasks are only counted. Every count is
+`{ count, is_floor }`, per-fetch truncation is reported, `warnings`
+appear only when something was truncated, and orphaned sections and
+tasks are surfaced instead of dropped. Decision recorded under R24 in
+`docs/SPEC.md` section 7; D-1 has left section 10. Test-first commit
+`109f132`, implementation `cdd670f`.
+
+D-2 is next and is now the only gating defect: `due_today` and `overdue`
+are computed against UTC "today" on the server host. The approach is
+decided and recorded in `docs/SPEC.md` section 10, D-2, under **DECIDED,
+Session 10**: ask Todoist's own `today` and `overdue` filters, so the
+timezone is the Todoist account's own, with the two new fetches carrying
+the same `is_floor` and truncation signals as the other four.
+The D-1 tests in `test/get-overview-truncation.test.js` use a fake API
+that serves only `/projects`, `/sections`, `/labels` and `/tasks`, and
+throws on any other path. Once `get-overview` queries `/tasks/filter`,
+that fake must answer it too, or every D-1 test will fail for a fixture
+reason rather than a behavior one.
 
 D-4 does not gate publishing: token-source error messages name the wrong
 environment variable in some cases (an operator who configured
@@ -236,8 +248,9 @@ since it's already scoped, but nothing blocks on it.
 Also scheduled, recorded as DECIDED entries in section 7 rather than as
 defects:
 
-- `getPaginated`'s bare-array fallback branch always reports
-  not-truncated. The cursor path is correct and must not change.
+- **Done, Session 10.** `getPaginated`'s bare-array fallback now reports
+  truncated when the array fills the requested page limit. The cursor path
+  is unchanged. Landed with D-1 in `cdd670f`; see R17.
 - The Zod `.default()` before `.optional()` ordering, to be fixed as a bug
   class across every schema in `src/`, not as a single instance.
 - A stderr warning when a numeric cap is rejected and the default is used.

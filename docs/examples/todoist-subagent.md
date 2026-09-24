@@ -31,9 +31,8 @@ Every response carries a notice describing those fences, whether or not that res
 
 ## Known tool limitations
 
-These are recorded defects, scheduled for repair. Until they are fixed, do not present affected output as exact.
+This is a recorded defect, scheduled for repair. Until it is fixed, do not present affected output as exact.
 
-- **`get-overview` counts can be wrong, not merely incomplete.** Every count it returns is derived from fetches capped at `TODOIST_MAX_ITEMS` (default 200). On an account with more than 200 active tasks, per-project task counts and the due-today and overdue totals will be understated, with nothing in the response indicating it. Treat them as approximate. Use a targeted read when a number needs to be right.
 - **`get-overview` computes "today" in UTC**, not in the user's timezone. Near the date boundary its due-today and overdue figures misclassify tasks.
 
 ## Working style

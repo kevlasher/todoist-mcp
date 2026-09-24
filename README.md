@@ -60,7 +60,7 @@ Read tools are registered in **all** modes. Write tools are registered **only** 
 | `find-sections` | `GET /sections` (optionally `?project_id=`) |
 | `find-labels` | `GET /labels` |
 | `find-comments` | `GET /comments?task_id=` **or** `?project_id=` (exactly one required) |
-| `get-overview` | Aggregates `GET /projects` + `GET /sections` + `GET /labels` + `GET /tasks` into a compact overview (per-project active-task counts, sections, labels, due-today / overdue counts). **Every number here is derived from fetches capped at `TODOIST_MAX_ITEMS` (default 200); on an account with more active tasks than that, counts are undercounts, not merely truncated, and nothing in the response tells you which you got.** "Today" is also computed in UTC on the server host, not any particular timezone. See Known defects, D-1 and D-2. This tool also takes no `limit` argument, unlike the other read tools — there's no way to raise its cap per call. |
+| `get-overview` | Aggregates `GET /projects` + `GET /sections` + `GET /labels` + `GET /tasks` into a compact overview (per-project active-task counts, sections, labels, due-today / overdue counts). Task counts cover up to 5000 active tasks, a fixed ceiling independent of `TODOIST_MAX_ITEMS`, because tasks are only counted and no task text is returned. Project, section and label lists follow `TODOIST_MAX_ITEMS`, because their names are returned. Every count is `{ count, is_floor }`: `is_floor: true` means the fetch it came from was truncated, so the count is a minimum, not exact. Per-fetch truncation is reported under `fetches`, `warnings` appears only when something was truncated, and sections or tasks whose project is missing from the projects fetch are reported in `unmatched_sections` and `tasks_in_unlisted_projects` rather than dropped. "Today" is still computed in UTC on the server host, not any particular timezone; see Known defects, D-2. This tool takes no `limit` argument, unlike the other read tools. |
 
 ### Write tools (only when `TODOIST_READONLY=false`)
 
@@ -110,12 +110,11 @@ These aren't gaps scheduled to close — they're inherent to what a tool-registr
 
 ## Known defects
 
-Two defects that affect tool output are open: D-1 and D-2, each already qualified above, next to the tool it affects. They are named again here, together, because an agent or operator shouldn't have to go find `docs/SPEC.md` to learn what's actually wrong. Full root cause and fix criteria for each live in `docs/SPEC.md` section 10.
+One defect that affects tool output is open: D-2, already qualified above, next to the tool it affects. It is named again here because an agent or operator shouldn't have to go find `docs/SPEC.md` to learn what's actually wrong. Full root cause and fix criteria live in `docs/SPEC.md` section 10.
 
-- **D-1 — `get-overview` counts can be wrong, not just incomplete.** Derived from fetches capped at `TODOIST_MAX_ITEMS` (default 200); accounts with more active tasks than that get undercounts with no signal distinguishing them from correct ones.
 - **D-2 — `get-overview` computes "today" in UTC on the server host,** not in any particular user's timezone, misclassifying tasks near the date boundary.
 
-A third item, D-4, is a startup configuration error message that names the wrong environment variable in some cases — it's noted under Configuration below rather than here, since it affects an operator's setup error, not tool output an agent or caller ever sees.
+A second item, D-4, is a startup configuration error message that names the wrong environment variable in some cases — it's noted under Configuration below rather than here, since it affects an operator's setup error, not tool output an agent or caller ever sees.
 
 ---
 
@@ -130,7 +129,7 @@ All configuration is environment-based and read **once** at startup. See `.env.e
 | `TODOIST_READONLY` | *(unset → read-only)* | `false` enables writes; anything else is read-only. |
 | `TODOIST_MAX_OUTPUT_CHARS` | `50000` | Whole-response output-size cap per tool call. |
 | `TODOIST_MAX_FIELD_CHARS` | `2000` | Per-field truncation cap for untrusted text. |
-| `TODOIST_MAX_ITEMS` | `200` | Max items fetched across pagination per read call (affects `get-overview` accuracy — see D-1). |
+| `TODOIST_MAX_ITEMS` | `200` | Max items fetched across pagination per read call. One exception: `get-overview` counts tasks up to a fixed 5000 regardless of this value, because it returns only counts, never task text. Its project, section and label lists still follow this cap. |
 
 If token resolution fails, the resulting error currently names `TODOIST_API_KEY` even in cases where you configured `TODOIST_API_KEY_FILE` instead and it was the problem (for example, an empty token file). Check both variables if you hit this. (`docs/SPEC.md` section 10, D-4.)
 
