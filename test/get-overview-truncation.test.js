@@ -29,6 +29,26 @@ import { UNTRUSTED_NOTICE } from '../src/sanitize.js';
  * above them. The only 5000 in this file is the literal the ceiling test
  * asserts against, written as a literal so changing the constant fails it.
  *
+ * D-2 (docs/SPEC.md section 10), Session 10: get-overview must not compute
+ * "today" on the server host. Decisions the D-2 tests at the end of this
+ * file test:
+ *   - due_today and overdue are the item counts of GET /tasks/filter with
+ *     query "today" and query "overdue", Todoist's own filters in the
+ *     account's timezone. The tasks' own due dates play no part.
+ *   - Both filter fetches use the 5000 ceiling, not TODOIST_MAX_ITEMS,
+ *     because they are only counted.
+ *   - Each filter fetch is reported under `fetches` as due_today and
+ *     overdue, and each count takes is_floor from its own fetch, not from
+ *     the tasks fetch.
+ *   - The tool description says the two counts come from Todoist's today
+ *     and overdue filters in the account's timezone.
+ *
+ * The fake API answers /tasks/filter for both queries, so the D-1 tests
+ * pass or fail on behavior, not on an unexpected path. The D-1 assertions
+ * that tied due_today and overdue to the tasks fetch are superseded by D-2
+ * and now live in assertFilterFloors. D-2 fixture sizes follow the same
+ * rule: 3/7/13/17/29/43/47 below the caps, 5081/5087 above the ceiling.
+ *
  * This file writes tests only; src/ is untouched.
  */
 
@@ -44,7 +64,15 @@ const serverCfg = {
 };
 
 /** Build an account fixture. Counts are item totals held by the fake API. */
-function account({ projects = 3, sections = 11, labels = 4, tasks = 413, extra = {} } = {}) {
+function account({
+  projects = 3,
+  sections = 11,
+  labels = 4,
+  tasks = 413,
+  today,
+  overdue,
+  extra = {},
+} = {}) {
   const P = Array.from({ length: projects }, (_, i) => ({
     id: `p${i}`,
     name: `Project ${i}`,
@@ -67,7 +95,24 @@ function account({ projects = 3, sections = 11, labels = 4, tasks = 413, extra =
     '/sections': [...S, ...(extra.sections ?? [])],
     '/labels': [...L, ...(extra.labels ?? [])],
     '/tasks': [...T, ...(extra.tasks ?? [])],
+    // Todoist's answers to /tasks/filter, keyed by query. By default the
+    // fixture's past-dated tasks are overdue and nothing is due today; D-2
+    // tests pass sizes that deliberately disagree with the tasks' own dates.
+    '/tasks/filter': {
+      today: today === undefined ? [] : filterTasks('today', today),
+      overdue: overdue === undefined ? T.filter((t) => t.due) : filterTasks('overdue', overdue),
+    },
   };
+}
+
+/** n tasks as Todoist's filter endpoint would return them. */
+function filterTasks(query, n) {
+  return Array.from({ length: n }, (_, i) => ({
+    id: `f-${query}-${i}`,
+    content: `Filtered ${query} ${i}`,
+    project_id: 'p0',
+    due: null,
+  }));
 }
 
 /**
@@ -83,10 +128,14 @@ function fakeApi(data) {
     if (!all) throw new Error(`fixture error: unexpected path ${path}`);
     const limit = Number(u.searchParams.get('limit'));
     const offset = Number(u.searchParams.get('cursor') ?? 0);
-    requested.push({ path, limit, offset });
-    const results = all.slice(offset, offset + limit);
+    const query = u.searchParams.get('query');
+    requested.push({ path, limit, offset, query });
+    // /tasks/filter answers per query. An unknown query gets an empty list,
+    // not an error, so a wrong query fails on the D-2 query assertion.
+    const list = path === '/tasks/filter' ? (all[query] ?? []) : all;
+    const results = list.slice(offset, offset + limit);
     const next = offset + results.length;
-    const body = { results, next_cursor: next < all.length ? String(next) : null };
+    const body = { results, next_cursor: next < list.length ? String(next) : null };
     return { ok: true, status: 200, text: async () => JSON.stringify(body) };
   };
   return { fetch, requested };
@@ -137,8 +186,8 @@ function assertFloorsMatchFetches(payload) {
   assertCount(t.projects, f.projects.truncated, 'totals.projects');
   assertCount(t.labels, f.labels.truncated, 'totals.labels');
   assertCount(t.active_tasks, f.tasks.truncated, 'totals.active_tasks');
-  assertCount(t.due_today, f.tasks.truncated, 'totals.due_today');
-  assertCount(t.overdue, f.tasks.truncated, 'totals.overdue');
+  // due_today and overdue no longer derive from the tasks fetch (D-2); see
+  // assertFilterFloors.
   assertCount(payload.tasks_in_unlisted_projects, f.tasks.truncated, 'tasks_in_unlisted_projects');
   assert.ok(Array.isArray(payload.projects), 'projects is not an array');
   for (const p of payload.projects) {
@@ -158,12 +207,17 @@ function assertFloorsMatchFetches(payload) {
 
 test('D-1: below every cap, all counts are exact and nothing is flagged', async () => {
   const { payload } = await overview(account());
-  assert.deepEqual(payload.fetches, {
-    projects: { fetched: 3, truncated: false },
-    sections: { fetched: 11, truncated: false },
-    labels: { fetched: 4, truncated: false },
-    tasks: { fetched: 413, truncated: false },
-  });
+  // The D-2 filter fetches are checked by the D-2 tests.
+  const { projects, sections, labels, tasks } = payload.fetches;
+  assert.deepEqual(
+    { projects, sections, labels, tasks },
+    {
+      projects: { fetched: 3, truncated: false },
+      sections: { fetched: 11, truncated: false },
+      labels: { fetched: 4, truncated: false },
+      tasks: { fetched: 413, truncated: false },
+    }
+  );
   assert.deepEqual(payload.totals.projects, { count: 3, is_floor: false });
   assert.deepEqual(payload.totals.labels, { count: 4, is_floor: false });
   assert.deepEqual(payload.totals.active_tasks, { count: 413, is_floor: false });
@@ -196,8 +250,7 @@ test('D-1: tasks over the 5000 ceiling make every task-derived count a floor', a
   const { payload } = await overview(account({ tasks: 5173 }));
   assert.deepEqual(payload.fetches?.tasks, { fetched: 5000, truncated: true });
   assert.deepEqual(payload.totals.active_tasks, { count: 5000, is_floor: true });
-  assertCount(payload.totals.due_today, true, 'totals.due_today');
-  assertCount(payload.totals.overdue, true, 'totals.overdue');
+  // due_today and overdue come from their own fetches since D-2.
   assertCount(payload.tasks_in_unlisted_projects, true, 'tasks_in_unlisted_projects');
   for (const p of payload.projects) {
     assertCount(p.active_task_count, true, `projects[${p.id}].active_task_count`);
@@ -325,4 +378,137 @@ test('D-1: signal keys precede the name lists so capOutput cuts the lists first'
     'labels',
     'projects',
   ]);
+});
+
+// ---- D-2: due_today and overdue come from Todoist's filters ---------------
+
+/**
+ * The D-2 guard: due_today and overdue each have their own entry under
+ * `fetches`, count exactly what that fetch returned, and take is_floor from
+ * that fetch alone.
+ */
+function assertFilterFloors(payload) {
+  const f = payload.fetches ?? {};
+  for (const name of ['due_today', 'overdue']) {
+    assert.equal(typeof f[name]?.truncated, 'boolean', `fetches.${name}.truncated missing: ${JSON.stringify(f)}`);
+    assert.equal(typeof f[name]?.fetched, 'number', `fetches.${name}.fetched missing: ${JSON.stringify(f)}`);
+    assertCount(payload.totals[name], f[name].truncated, `totals.${name}`);
+    assert.equal(
+      payload.totals[name].count,
+      f[name].fetched,
+      `totals.${name} does not count its own fetch: ${JSON.stringify(payload.totals[name])} vs ${JSON.stringify(f[name])}`
+    );
+  }
+}
+
+/** Tasks whose own dates would count as due today or overdue on this host. */
+function hostDatedTasks() {
+  const utc = new Date().toISOString().slice(0, 10);
+  const d = new Date();
+  const local = [d.getFullYear(), d.getMonth() + 1, d.getDate()]
+    .map((n) => String(n).padStart(2, '0'))
+    .join('-');
+  return [
+    ...Array.from({ length: 7 }, (_, i) => ({
+      id: `t-host-today-${i}`,
+      content: 'x',
+      project_id: 'p1',
+      due: { date: i % 2 ? local : utc },
+    })),
+    ...Array.from({ length: 13 }, (_, i) => ({
+      id: `t-host-past-${i}`,
+      content: 'y',
+      project_id: 'p2',
+      due: { date: '2001-02-03' },
+    })),
+  ];
+}
+
+test("D-2: due_today and overdue equal Todoist's filter results, not the tasks' own dates", async () => {
+  const { payload } = await overview(
+    account({ tasks: 3, today: 29, overdue: 17, extra: { tasks: hostDatedTasks() } })
+  );
+  assert.deepEqual(payload.totals.due_today, { count: 29, is_floor: false });
+  assert.deepEqual(payload.totals.overdue, { count: 17, is_floor: false });
+  assertFilterFloors(payload);
+  assertFloorsMatchFetches(payload);
+
+  // Filters that return nothing give zero, whatever the tasks' dates say.
+  const { payload: empty } = await overview(
+    account({ tasks: 3, today: 0, overdue: 0, extra: { tasks: hostDatedTasks() } })
+  );
+  assert.deepEqual(empty.totals.due_today, { count: 0, is_floor: false });
+  assert.deepEqual(empty.totals.overdue, { count: 0, is_floor: false });
+});
+
+test('D-2: the filter requests use exactly the queries "today" and "overdue"', async () => {
+  const { requested } = await overview(account({ today: 3, overdue: 7 }));
+  const queries = requested.filter((r) => r.path === '/tasks/filter').map((r) => r.query);
+  assert.deepEqual(
+    [...queries].sort(),
+    ['overdue', 'today'],
+    `filter queries sent: ${JSON.stringify(queries)}`
+  );
+});
+
+test('D-2: each filter fetch has its own fetches entry and is not limited by maxItems', async () => {
+  const { payload } = await overview(account({ today: 43, overdue: 47 }));
+  assert.deepEqual(payload.fetches?.due_today, { fetched: 43, truncated: false });
+  assert.deepEqual(payload.fetches?.overdue, { fetched: 47, truncated: false });
+  assert.deepEqual(payload.totals.due_today, { count: 43, is_floor: false });
+  assert.deepEqual(payload.totals.overdue, { count: 47, is_floor: false });
+  assertFilterFloors(payload);
+  assertFloorsMatchFetches(payload);
+});
+
+test('D-2: a truncated tasks fetch does not make due_today or overdue a floor', async () => {
+  const { payload } = await overview(account({ tasks: 5173, today: 29, overdue: 43 }));
+  assert.deepEqual(payload.fetches?.tasks, { fetched: 5000, truncated: true });
+  assert.deepEqual(payload.totals.active_tasks, { count: 5000, is_floor: true });
+  assert.deepEqual(payload.totals.due_today, { count: 29, is_floor: false });
+  assert.deepEqual(payload.totals.overdue, { count: 43, is_floor: false });
+  assertFilterFloors(payload);
+  assertFloorsMatchFetches(payload);
+});
+
+test('D-2: a truncated overdue fetch marks only overdue as a floor', async () => {
+  const { payload } = await overview(account({ today: 29, overdue: 5081 }));
+  assert.deepEqual(payload.fetches?.overdue, { fetched: TASK_CEILING, truncated: true });
+  assert.deepEqual(payload.fetches?.due_today, { fetched: 29, truncated: false });
+  assert.deepEqual(payload.totals.overdue, { count: TASK_CEILING, is_floor: true });
+  assert.deepEqual(payload.totals.due_today, { count: 29, is_floor: false });
+  assert.deepEqual(payload.totals.active_tasks, { count: 413, is_floor: false });
+  assert.ok(
+    payload.warnings?.some((w) => /overdue/.test(w)),
+    `no warning names the overdue fetch: ${JSON.stringify(payload.warnings)}`
+  );
+  assertFilterFloors(payload);
+  assertFloorsMatchFetches(payload);
+});
+
+test('D-2: a truncated today fetch marks only due_today as a floor', async () => {
+  const { payload } = await overview(account({ today: 5087, overdue: 17 }));
+  assert.deepEqual(payload.fetches?.due_today, { fetched: TASK_CEILING, truncated: true });
+  assert.deepEqual(payload.fetches?.overdue, { fetched: 17, truncated: false });
+  assert.deepEqual(payload.totals.due_today, { count: TASK_CEILING, is_floor: true });
+  assert.deepEqual(payload.totals.overdue, { count: 17, is_floor: false });
+  assert.deepEqual(payload.totals.active_tasks, { count: 413, is_floor: false });
+  assert.ok(
+    payload.warnings?.some((w) => /today/.test(w)),
+    `no warning names the today fetch: ${JSON.stringify(payload.warnings)}`
+  );
+  assertFilterFloors(payload);
+  assertFloorsMatchFetches(payload);
+});
+
+test("D-2: the description says the counts come from Todoist's filters in the account's timezone", async () => {
+  const { server } = createServer(serverCfg);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: 'test', version: '1.0.0' });
+  await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+  const { tools } = await client.listTools();
+  await client.close();
+  const description = tools.find((t) => t.name === 'get-overview')?.description ?? '';
+  assert.match(description, /filter/i, `description does not mention filters: ${description}`);
+  assert.match(description, /timezone|time zone/i, `description does not mention the timezone: ${description}`);
 });
