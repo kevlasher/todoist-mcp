@@ -130,9 +130,9 @@ function fakeApi(data) {
     const offset = Number(u.searchParams.get('cursor') ?? 0);
     const query = u.searchParams.get('query');
     requested.push({ path, limit, offset, query });
-    // /tasks/filter answers per query. An unknown query gets an empty list,
-    // not an error, so a wrong query fails on the D-2 query assertion.
-    const list = path === '/tasks/filter' ? (all[query] ?? []) : all;
+    // /tasks/filter answers per query. An unknown query has no list, so
+    // get-overview errors and the helper's "returned an error" assertion fails.
+    const list = path === '/tasks/filter' ? all[query] : all;
     const results = list.slice(offset, offset + limit);
     const next = offset + results.length;
     const body = { results, next_cursor: next < list.length ? String(next) : null };
@@ -388,7 +388,8 @@ test('D-1: signal keys precede the name lists so capOutput cuts the lists first'
  * that fetch alone.
  */
 function assertFilterFloors(payload) {
-  const f = payload.fetches ?? {};
+  const f = payload.fetches;
+  assert.equal(typeof f, 'object', `no fetches block: ${JSON.stringify(Object.keys(payload))}`);
   for (const name of ['due_today', 'overdue']) {
     assert.equal(typeof f[name]?.truncated, 'boolean', `fetches.${name}.truncated missing: ${JSON.stringify(f)}`);
     assert.equal(typeof f[name]?.fetched, 'number', `fetches.${name}.fetched missing: ${JSON.stringify(f)}`);
@@ -508,7 +509,9 @@ test("D-2: the description says the counts come from Todoist's filters in the ac
   await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
   const { tools } = await client.listTools();
   await client.close();
-  const description = tools.find((t) => t.name === 'get-overview')?.description ?? '';
+  const tool = tools.find((t) => t.name === 'get-overview');
+  assert.ok(tool, 'get-overview is not listed by tools/list');
+  const { description } = tool;
   assert.match(description, /filter/i, `description does not mention filters: ${description}`);
   assert.match(description, /timezone|time zone/i, `description does not mention the timezone: ${description}`);
 });
