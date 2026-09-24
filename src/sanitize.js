@@ -20,6 +20,20 @@ export const FRAME_OPEN = '‹UNTRUSTED›'; // ‹UNTRUSTED›
 export const FRAME_CLOSE = '‹/UNTRUSTED›'; // ‹/UNTRUSTED›
 
 /**
+ * Decode one numeric entity's digits to a character. An invalid code point
+ * (zero, a surrogate, or above 0x10FFFF, including digit runs too large
+ * for a double) becomes U+FFFD, as the HTML standard does for invalid
+ * numeric character references (R10, D-8). String.fromCodePoint throws on
+ * anything above 0x10FFFF, and one throw here would fail a whole read, so
+ * this is the only place in src/ that calls it.
+ */
+function decodeCodePoint(digits, radix) {
+  const cp = parseInt(digits, radix);
+  if (cp === 0 || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return '�';
+  return String.fromCodePoint(cp);
+}
+
+/**
  * Decode HTML entities — numeric (decimal and hex) first, then the common
  * named ones — in a single pass. Numeric entities must be decoded before
  * both the tag-stripping pass and URL neutralization below: otherwise an
@@ -29,8 +43,8 @@ export const FRAME_CLOSE = '‹/UNTRUSTED›'; // ‹/UNTRUSTED›
  */
 function decodeHtmlEntities(text) {
   return text
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => decodeCodePoint(hex, 16))
+    .replace(/&#(\d+);/g, (_, dec) => decodeCodePoint(dec, 10))
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&amp;/gi, '&')
