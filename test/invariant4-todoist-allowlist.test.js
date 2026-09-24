@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { createServer } from '../src/server.js';
-import { stripMarkup } from '../src/sanitize.js';
+import { stripMarkup, UNTRUSTED_NOTICE, FRAME_OPEN, FRAME_CLOSE } from '../src/sanitize.js';
 
 /**
  * Decision under test: no todoist.com allowlist exists. stripMarkup defangs
@@ -100,6 +100,16 @@ test('REGRESSION CHECK: no Todoist task url survives in find-tasks output', asyn
     const client = await connect(cfg({ readOnly: true }));
     const res = await client.callTool({ name: 'find-tasks', arguments: {} });
     const text = res.content.map((c) => c.text).join('\n');
+    // An error result also lacks the url, so first require that the tool
+    // succeeded and actually returned the fixture task (D-12).
+    assert.ok(!res.isError, `find-tasks returned an error: ${text}`);
+    const prefix = `${UNTRUSTED_NOTICE}\n\n`;
+    assert.ok(text.startsWith(prefix), `result does not start with the notice: ${text}`);
+    const payload = JSON.parse(text.slice(prefix.length));
+    const task = payload.tasks?.find((t) => t.id === '999');
+    assert.ok(task, `fixture task 999 not returned: ${text}`);
+    assert.equal(task.content, `${FRAME_OPEN}Buy milk${FRAME_CLOSE}`);
+    assert.equal(Object.hasOwn(task, 'url'), false, `url key present: ${JSON.stringify(task.url)}`);
     assert.ok(
       !text.includes(TASK_URL) && !text.includes('"url"'),
       `expected task url field to be absent from output (D-5); got: ${text}`

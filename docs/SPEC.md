@@ -25,6 +25,7 @@ Maintenance: one row per session, added when the session ends.
 | 9 | AD-4 and AD-5 recorded. Two confounded framing assertions removed and a tripwire added. Invariant 1's framing evidence replaced with a real comparison; Invariant 2's proven capable of failing. Evidence column added to section 5. All ten `[DECISION NEEDED]` items in section 7 resolved. Section 10 opened with D-1 through D-5. Section 6's stale sanitizer marks corrected. Both Session 8 open items closed. Fixture-default collision and the unverified `url` format assumption recorded as scheduled work. | Sections 4, 5, 6, 7, 8, 9, 10 |
 | 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. D-3 fixed by correcting the `find-tasks` description text only, with no behavior change; decision recorded under R21, and D-3 left section 10. Test `test/find-tasks-query-supersedes-description.test.js` reads that text from `tools/list`. D-1 fixed: `get-overview`'s tasks fetch counts up to a fixed 5000 while its project, section and label lists keep `TODOIST_MAX_ITEMS`; every count carries `is_floor`; orphaned sections and tasks are surfaced. Decision recorded under R24, and D-1 left section 10. R17's bare-array flag fixed alongside it. AD-5's list of example-agent warnings updated. Coverage recorded for `cdd670f`. D-2 decided: `get-overview` stops computing "today" on the server host and asks Todoist's own `today` and `overdue` filters, so the timezone is the Todoist account's own and the server holds none, replacing the open question of how a timezone would be supplied. D-2 fixed that way: the counts mean what Todoist's filters mean, deadline-only tasks included, to match the Todoist app; both filter fetches use the 5000 ceiling, and each count takes `is_floor` from its own fetch. Decision recorded under R24, and D-2 left section 10. Three unreachable fallbacks removed from the D-2 tests to restore that file's branch coverage. AD-5 updated: the example agent now carries no defect warnings. Coverage recorded for `0a5ab95`. | Sections 4, 5, 6, 7, 8, 10 |
 | 11 | Independent code review of 2026-09-24 recorded verbatim in `docs/reviews/`. Seven findings reproduced against `04c46ec` and recorded as D-6 through D-12, which gate publication: URL reconstruction and undefanged URL forms, unsanitized and uncapped error results, a throwing numeric entity, dot-segment task ids, read-tool `limit` above `TODOIST_MAX_ITEMS`, an unguarded live script, and two tests that pass while their property is violated. The review's other findings recorded as D-13 through D-22, which do not gate publication. Invariants 1, 2 and 4 marked VIOLATED; 6, 8, 9 and 10 qualified; a VIOLATED status defined. No code or test changes. | Sections 5, 10 |
+| 12 | D-12 fixed in `6a99b01`, tests only. `test/client.test.js`'s token test now registers a 40-character token and asserts it is absent from the error message, proven by removing the error detail's redaction in `src/client.js`. The `find-tasks` regression check now requires success and the fixture task before asserting no `url`, proven by a throwing handler. Static check `test/calltool-asserts-iserror.test.js` added for the bug class; it found three more tests in `test/mcp-e2e.test.js`, each now asserting success first. AD-6 Evidence and Invariant 4's citation updated. D-12 left section 10; D-22 scope noted. Coverage recorded for `6a99b01`. | Sections 4, 5, 8, 10 |
 
 ## 1. Purpose
 
@@ -451,7 +452,17 @@ which is removed. The two do not overlap.
   each site by file and line. Deliberately narrow: shorthand `{ url }`,
   computed keys and spreads of raw API objects are not caught.
 - `test/invariant4-todoist-allowlist.test.js`: the `find-tasks`
-  regression check requires that no task url survives.
+  regression check requires that the tool succeeded and returned fixture
+  task `999` with its framed content, and only then that the task carries
+  no `url` key and no task url survives. Until `6a99b01` it asserted
+  only the absences, so a tool error satisfied it (D-12). Proven capable
+  of failing by replacing the `find-tasks` handler with one that throws:
+  the check fails on its success assertion.
+- `test/calltool-asserts-iserror.test.js`: static check that fails on
+  any test in `test/` that calls `callTool` and never asserts on
+  `isError`, so that an error result cannot satisfy a test whose other
+  assertions are absences. It also runs its detector on a planted
+  absence-only test. A regex over top-level blocks, not an AST parse.
 - Test-first commit `4894671`, in which all eight of these checks failed
   on the missing-key assertion and the tripwire reported all three
   sites. Implementation commit `25c63e1`, in which the suite went to 79
@@ -499,13 +510,13 @@ tool-output assertion could not fail, which is why this column exists.
 | 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **VIOLATED** on error responses (D-7). Holds for success responses. | **TESTED** (`find-projects`) / **INSPECTED** (six remaining read tools) | `test/mcp-e2e.test.js` — `'read tool output is framed and strips markup; token never leaks'`, which asserts the echoed project name matches exactly what `safeField` produces. Proven capable of failing by replacing `shapeProject`'s `safeField` call with `stripMarkup`, which failed this assertion alone. Proves `find-projects` routes through the framing helper; it does not prove the helper frames correctly, which is `test/sanitize.test.js`'s job. Remaining read tools covered by inspection of the shapers in `src/shape.js`. Behavior inventory §4–5, §8; review "Also checked" §3 |
 | 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **VIOLATED** on error responses (D-7). Holds for success responses. | **TESTED** (`update-tasks`) / **INSPECTED** (four write tools framing an echoed field) / n/a (four echoing no Todoist-origin text, see AD-4) | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Proven capable of failing during Session 9 by replacing the `update-tasks` handler's `safeField(updated?.content, cfg.maxFieldChars)` call with `stripMarkup(updated?.content)`: the suite went to 71 of 72 with the failure confined to this test, and within it to the `safeField`-comparison assertion alone, while the three surrounding stripping assertions and the read-path framing test all stayed green. Reproducing this break requires widening the module's import to include `stripMarkup`. Without it the handler throws a `ReferenceError` that its own `try`/`catch` converts into an `isError` result, and the test fails on a different assertion for the wrong reason, which would look like confirmation while proving nothing. This assertion does not pin `cfg.maxFieldChars` plumbing; see section 8. |
 | 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | **UNGRADED** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
-| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **VIOLATED** (D-6, D-7). `stripMarkup` reassembles a live `http://` URL from split link syntax and leaves `ftp://`, letter-prefixed `https://` and bare `www.` hosts untouched; error responses carry upstream URLs unstripped. | **UNGRADED** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption. The dedicated `url` field is not an exemption: it is removed from tool output entirely (AD-6), covered by `test/url-removed-from-tool-output.test.js` and `test/no-url-key-in-output.test.js`. Those two were watched to fail before the removal, but the defanging tests above have not been graded, so the row stays UNGRADED. The `find-tasks` regression check in `test/invariant4-todoist-allowlist.test.js` also passes when the tool errors (D-12). |
+| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **VIOLATED** (D-6, D-7). `stripMarkup` reassembles a live `http://` URL from split link syntax and leaves `ftp://`, letter-prefixed `https://` and bare `www.` hosts untouched; error responses carry upstream URLs unstripped. | **UNGRADED** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption. The dedicated `url` field is not an exemption: it is removed from tool output entirely (AD-6), covered by `test/url-removed-from-tool-output.test.js` and `test/no-url-key-in-output.test.js`. Those two were watched to fail before the removal, but the defanging tests above have not been graded, so the row stays UNGRADED. The `find-tasks` regression check in `test/invariant4-todoist-allowlist.test.js` requires success and the returned fixture task before asserting the `url` key absent, and fails when the handler throws (fixed in `6a99b01`, D-12). `test/calltool-asserts-iserror.test.js` fails on any test that calls `callTool` without asserting on `isError`. |
 | 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **HOLDS** | **UNGRADED** | `test/invariant5-redirect-ssrf.test.js` — the invariant is now satisfied by refusing all redirects rather than by re-validating redirect targets, so no second URL is ever contacted |
 | 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** through the shipped entry point, `src/index.js`, which builds the config with `loadConfig`. Does not cover a direct `createServer` call whose config omits `readOnly`, which registers all nine write tools (D-19). | **UNGRADED** | Behavior inventory §1, §7; `test/registration.test.js` |
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | **UNGRADED** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
 | 8 | The server exposes write tools if and only if it was started with `TODOIST_READONLY` set to exactly `"false"`; this is decided once at startup, before any Todoist content is read, by not registering those tools at all, and cannot be changed for the lifetime of the running process. | **HOLDS** through the shipped entry point, `src/index.js`. Does not cover a direct `createServer` call whose config omits `readOnly` (D-19). | **UNGRADED** | `test/registration.test.js` — `'read-only mode registers only the 7 read tools, no writes'`, `'read/write mode registers the full 16-tool set'`; behavior inventory §1, §7. (Per-request mode selection and human confirmation are out of scope for this invariant — see AD-1.) |
 | 9 | No log line emitted by `src/logger.js` contains the raw, unredacted API token. | **HOLDS** for tokens of 4 or more characters. `loadConfig` accepts shorter tokens and `registerSecret` never registers them (D-17). | **UNGRADED** | Behavior inventory §2–3, §6 (tested); review "Also checked" §3 — logger redacts every line, `client.js` never logs headers/bodies |
-| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** for tokens of 4 or more characters. A shorter token is accepted by `loadConfig`, never registered, and leaks in an API error (D-17). | **UNGRADED** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path) |
+| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** for tokens of 4 or more characters. A shorter token is accepted by `loadConfig`, never registered, and leaks in an API error (D-17). | **UNGRADED** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path). `test/client.test.js`, `'API error text never leaks the token'`, registers a 40-character token, has the API echo it in a 401 body, and asserts the token is absent from the thrown error's message. Proven capable of failing by replacing `redact(detail)` with `detail` in `src/client.js`'s error message, which failed the token assertion (`6a99b01`, D-12). It tests the client, not a tool handler, and registers the token itself because `createClient` does not (D-17). The other tests cited here have not been graded, so the row stays UNGRADED. |
 | 11 | `API_BASE` / outbound hostname is a fixed literal, never derived from any tool input. | **HOLDS** | **UNGRADED** | Behavior inventory §6; review Finding 5 discussion ("the host is hardcoded... never derived from any tool argument") |
 | 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **HOLDS** | **UNGRADED** | `test/result-builder-shape.test.js` — `'Invariant 12: a tool result object is constructed in exactly one place in src/, never ad hoc per tool'`. The check is by object shape (any `{ content: [{ type: 'text', ... }] }`-shaped literal outside the one designated builder function), not by function name. Verified by deliberately introducing a violating tool and confirming the test caught it at the exact line. The invariant holds, but it does not mean every result is sanitized: the builder's error branch only redacts (D-7). The shape check misses `{ content: blocks }`, computed keys and a builder result modified afterwards (D-22). |
 
@@ -931,6 +942,22 @@ against 97.83%. `ad33081` removed the three fallbacks without changing
 any expectation, and the file is now at 98.67%. `src/tools/write.js`
 function coverage is unchanged at 38.46%.
 
+Session 12, at commit `6a99b01` (D-12 fix), measured the same way on
+Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 95.29% | 90.32% | 92.39% |
+
+All three figures are above the `0a5ab95` row, and no file present at
+`4f4547c` changed its figures; the rise comes from the new
+`test/calltool-asserts-iserror.test.js`. A first version of that file,
+never committed, lowered branches to 90.11% and functions to 91.91%,
+because its reporting code ran only when it found an offender. A test
+that runs the detector on a planted source now exercises that code.
+The commit changes tests only. `src/tools/write.js` function coverage is
+unchanged at 38.46%.
+
 Notes:
 
 - This figure includes test files themselves in the denominator (Node
@@ -1088,8 +1115,8 @@ exact input and output given; **by reading** means established from the
 code only; **review only** means taken from the review and not checked
 again.
 
-**Publication gate.** D-6 through D-12 gate publication. D-13 through
-D-22 do not. While D-6, D-7, D-8 or D-10 is open, `README.md`'s "Known
+**Publication gate.** D-6 through D-12 gate publication; D-12 is fixed.
+D-13 through D-22 do not. While D-6, D-7, D-8 or D-10 is open, `README.md`'s "Known
 defects" statement "No open defect affects tool output" is false.
 
 ### D-1
@@ -1397,49 +1424,9 @@ empty filter results, not because anything refused to run.
 - `README.md` lists all three live paths and the Layout block includes
   the script.
 
-### D-12: Two tests pass while the property they name is violated
+### D-12
 
-**Gates publication.** **Reproduced.** Review section 3, table rows 1
-and 10.
-
-1. `test/client.test.js`, "API error text never leaks the token". The
-   fixture token is `tok` (three characters, so under R6 it is never
-   registered) and the stubbed 401 body is
-   `Unauthorized: token tok is invalid`. The test asserts only
-   `err.status === 401`. Reproduction: the same fixture produces
-   `err.message` = `Todoist API 401 on GET /tasks: Unauthorized: token tok is invalid`,
-   which contains the token, and the test passes on `04c46ec`. With
-   `redact(detail)` replaced by `detail` in `src/client.js` it still
-   passes.
-2. `test/invariant4-todoist-allowlist.test.js`, "REGRESSION CHECK: no
-   Todoist task url survives in find-tasks output". It asserts only that
-   the url and `"url"` are absent. Reproduction: with the `find-tasks`
-   handler's body replaced by
-   `throw new Error('handler replaced by generic failure')`, the tool
-   returns `isError: true` with text
-   `Error: handler replaced by generic failure`, and the test passes.
-
-**Claims this makes false:**
-
-- AD-6, Evidence: "the `find-tasks` regression check requires that no
-  task url survives". It does so only if the tool succeeds, and it does
-  not check that.
-- Invariant 4's citation of that file, now noted in the table.
-- The first test's own name.
-
-**Fix criteria:**
-
-- Test 1 asserts that `err.message` does not contain the token, uses a
-  token that is registered, and is proven by removing `redact(detail)`
-  and watching it fail. The unregistered short token is D-17.
-- Test 2 asserts success, parses the payload, finds task `999` with its
-  content, and only then asserts the key is absent. It is proven by the
-  throwing replacement above.
-- Treated as a bug class: a negative assertion that a failure also
-  satisfies. Every test in `test/` whose only assertions on a tool result
-  or thrown error are absences also asserts the success or the specific
-  error it expects. A static test fails on any test that calls `callTool`
-  and makes no assertion on `isError`. It is proven by planting one.
+Fixed in Session 12, `6a99b01`, by making both tests assert the property they name and adding `test/calltool-asserts-iserror.test.js`; see AD-6 Evidence and Invariant 4. This number is retired, not reused.
 
 ### D-13: Output and field caps bound a prefix, not the response
 
@@ -1665,6 +1652,13 @@ its mode. The disposable-account assumption is written into section 9.
 **Does not gate publication.** Review section 3. Each item is review
 only unless marked. These bear on the Evidence column in section 5, and
 each is fixed by making the named mutation turn the test red.
+
+Not in scope: a missing success assertion in a test that calls a tool.
+D-12's static check, `test/calltool-asserts-iserror.test.js`, found it in
+three `test/mcp-e2e.test.js` tests (the read framing test, the
+`update-tasks` framing test and the output-size cap test), and all three
+were fixed in `6a99b01`. The weaknesses listed below for those tests
+remain.
 
 - `test/client.test.js`, "assertAllowedUrl blocks host override attempts
   in the base path": it makes no override attempt.

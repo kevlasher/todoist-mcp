@@ -5,7 +5,9 @@ import {
   createClient,
   SsrfError,
   API_BASE,
+  TodoistApiError,
 } from '../src/client.js';
+import { registerSecret } from '../src/redact.js';
 
 test('SSRF allowlist accepts only https api.todoist.com', () => {
   assert.ok(assertAllowedUrl('https://api.todoist.com/api/v1/tasks'));
@@ -68,20 +70,33 @@ test('getPaginated respects the item cap', async () => {
 });
 
 test('API error text never leaks the token', async () => {
+  // A token long enough to be registered (R6). The three-character `tok`
+  // used by `cfg` is never registered, which is D-17, not this test.
+  // createClient does not register its own token (also D-17), so the test
+  // registers it the way createServer does.
+  const token = '0123456789abcdef0123456789abcdef01234567';
+  registerSecret(token);
   const orig = globalThis.fetch;
   globalThis.fetch = async () => ({
     ok: false,
     status: 401,
-    text: async () => 'Unauthorized: token tok is invalid',
+    text: async () => `Unauthorized: token ${token} is invalid`,
   });
   try {
-    const client = createClient(cfg);
+    const client = createClient({ ...cfg, apiKey: token });
     await assert.rejects(
       () => client.request('GET', '/tasks'),
       (err) => {
-        // The registered secret is redacted by the logger/redactor; here we at
-        // least confirm the error is a TodoistApiError carrying a status.
+        assert.ok(err instanceof TodoistApiError, `expected a TodoistApiError, got ${err}`);
         assert.equal(err.status, 401);
+        assert.ok(
+          !err.message.includes(token),
+          `token leaked into the error message: ${err.message}`
+        );
+        assert.ok(
+          err.message.includes('Unauthorized: token [REDACTED] is invalid'),
+          `expected the API detail in the message with the token redacted; got: ${err.message}`
+        );
         return true;
       }
     );
