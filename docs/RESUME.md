@@ -15,15 +15,15 @@ machine.
 
 - Branch: work happens on a short-lived branch per cloud session, merged
   into `main` by pull request. `main` on `origin` is the source of truth.
-- Tests: 115/115 passing, under Node 20 (see section 8).
+- Tests: 140/140 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 13 are complete; section 7 records Session 13.
+- Sessions 1 through 14 are complete; section 7 records Session 14.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
-  D-12 and D-11 are done (section 7), D-11 in test-first commit
-  `e96d3fe` and implementation `9d4bd71`. **Next: the three small code
-  fixes, D-8, D-9 and D-10, then the remaining gating defects, D-6 and
+  D-12, D-11 and D-8 are done (section 7), D-8 in test-first commit
+  `be91ced` and implementation `bf2124d`. **Next: the two small code
+  fixes, D-9 and D-10, then the remaining gating defects, D-6 and
   D-7, before publication.** Each has fix criteria and its reproduction
   input in section 10. D-13 through D-22 do not gate publication.
 - After those, and still before the repository goes public:
@@ -227,6 +227,21 @@ Superseded on 2026-09-24: the independent code review found seven new
 defects that gate publication, D-6 through D-12 (see section 1). The
 paragraph beginning "Section 10 of `docs/SPEC.md` holds D-4" describes
 the state at the end of Session 10.
+
+**D-8: done, Session 14.** Test-first commit `be91ced`, implementation
+`bf2124d`. A numeric entity whose code point is zero, a surrogate or
+above 0x10FFFF decodes to U+FFFD through `decodeCodePoint` in
+`src/sanitize.js`, recorded under R10; valid entities decode as before.
+`test/d8-invalid-numeric-entity.test.js` covers hex and decimal forms,
+the surrogate range, zero, 2^53+1, digit runs past Infinity and the
+0x10FFFF / 0x110000 boundary, and runs `find-tasks` with one bad task
+among three and gets all three back. For the bug class it feeds every
+shaper hostile text in each framed field, and statically allows
+`String.fromCodePoint` in `src/` only inside `decodeCodePoint`. It
+found no other string-input throw. Two wrong-type throws, an object
+text field with no usable `toString` and a `null` item, are recorded
+under D-16 and not fixed. D-8 has left section 10. 140 tests pass.
+Next: D-9 and D-10.
 
 **D-11: done, Session 13.** Test-first commit `e96d3fe`, implementation
 `9d4bd71`. `scripts/live-smoke-date.js` calls `verifyContractTestAccount`
