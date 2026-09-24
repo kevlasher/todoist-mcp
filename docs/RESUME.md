@@ -18,12 +18,17 @@ machine.
 - Tests: 108/108 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
 - Sessions 1 through 10 are complete; section 7 records Session 10.
-  **Next: publication preparation.** Before the repository goes public:
-  - the independent code review, whose prompt was written on
-    2026-09-16;
+- The independent code review is done. It is dated 2026-09-24 and kept
+  verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
+  findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
+  **Next: fix the gating defects, D-6 through D-12, before publication.**
+  Each has fix criteria and its reproduction input in section 10. D-13
+  through D-22 do not gate publication.
+- After those, and still before the repository goes public:
   - the free scanning stack on GitHub, with CI running the suite under
     Node 20;
-  - a final read of `README.md`;
+  - a final read of `README.md`, which must include the README claims
+    that section 10's entries name as false;
   - a sweep of em dashes from the published files.
 - Six architecture decisions recorded in `docs/SPEC.md` section 4:
   AD-1 (mode selection belongs to the agent layer), AD-2 (URLs defanged,
@@ -101,8 +106,8 @@ When it's time to ship this branch's work to the running server:
 
 ## 4. Code that touches a live account
 
-Two places in this repo can write to a real Todoist account. Both are
-guarded. Know about them before running anything.
+Three places in this repo can write to a real Todoist account. Two are
+guarded and one is not. Know about all three before running anything.
 
 - `test-contract/` holds the Session 8 contract tests. They run only when
   `TODOIST_CONTRACT_TEST_TOKEN` is set, and an account guard refuses to
@@ -110,13 +115,20 @@ guarded. Know about them before running anything.
 - `scripts/live-smoke.js` performs a live write round-trip. Session 8
   retrofitted the same account guard onto it. Before that it wrote to
   whatever account its token opened, with no identity check.
+- `scripts/live-smoke-date.js` creates and completes a task to exercise
+  `find-tasks-by-date`. It has **no account guard**. It takes its token
+  from `TODOIST_API_KEY` or `TODOIST_API_KEY_FILE`, so it writes to
+  whatever account that token opens, including a personal one. Do not run
+  it until `docs/SPEC.md` D-11 is fixed.
 
-`npm test` runs neither. It is `node --test test/` and is fully offline.
+`npm test` runs none of them. It is `node --test test/` and is fully
+offline.
 
-`README.md` now documents `npm run smoke`'s account guard correctly, and
+`README.md` documents `npm run smoke`'s account guard correctly, and
 covers `test-contract/` in both its Tests section and its Layout block.
-That was open work as of Session 9; it closed when README.md was
-rewritten (see section 5).
+It is wrong about the total: its Tests section says two layers touch a
+live account and that both are guarded, and its Layout block omits
+`scripts/live-smoke-date.js`. Both are part of D-11's fix criteria.
 
 ## 5. Session 9: closed
 
@@ -197,6 +209,10 @@ README drift is suspected later, re-diff `README.md` against `docs/SPEC.md`
 directly; don't try to revive this one.
 
 ## 7. Session 10 and beyond
+
+Superseded on 2026-09-24: the independent code review found seven new
+defects that gate publication, D-6 through D-12 (see section 1). The
+paragraph below describes the state at the end of Session 10.
 
 Section 10 of `docs/SPEC.md` holds D-4 with fix criteria. No defect
 gating publication remains: D-2, the last one, is done. D-4 does not gate

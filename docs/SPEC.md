@@ -24,6 +24,7 @@ Maintenance: one row per session, added when the session ends.
 | 8 | Contract-test methodology established, with assertion inversion and request-body verification as mandatory substitutes for the failure-first step. `POST /tasks/{id}` partial-update semantics observed directly against the live API on 2026-08-27, confirming Finding 1's premise. Account guard retrofitted onto `scripts/live-smoke.js`. | Section 9 |
 | 9 | AD-4 and AD-5 recorded. Two confounded framing assertions removed and a tripwire added. Invariant 1's framing evidence replaced with a real comparison; Invariant 2's proven capable of failing. Evidence column added to section 5. All ten `[DECISION NEEDED]` items in section 7 resolved. Section 10 opened with D-1 through D-5. Section 6's stale sanitizer marks corrected. Both Session 8 open items closed. Fixture-default collision and the unverified `url` format assumption recorded as scheduled work. | Sections 4, 5, 6, 7, 8, 9, 10 |
 | 10 | D-5 fixed by removing the `url` field from tool output, recorded as AD-6. A class search found three raw url sites, not one. The strict-pattern guard recorded earlier the same day was superseded before it was built. D-5 left section 10. Static tripwire `test/no-url-key-in-output.test.js` added. AD-2, Invariant 4 and section 6 updated to match. Coverage recorded for `25c63e1`. D-3 fixed by correcting the `find-tasks` description text only, with no behavior change; decision recorded under R21, and D-3 left section 10. Test `test/find-tasks-query-supersedes-description.test.js` reads that text from `tools/list`. D-1 fixed: `get-overview`'s tasks fetch counts up to a fixed 5000 while its project, section and label lists keep `TODOIST_MAX_ITEMS`; every count carries `is_floor`; orphaned sections and tasks are surfaced. Decision recorded under R24, and D-1 left section 10. R17's bare-array flag fixed alongside it. AD-5's list of example-agent warnings updated. Coverage recorded for `cdd670f`. D-2 decided: `get-overview` stops computing "today" on the server host and asks Todoist's own `today` and `overdue` filters, so the timezone is the Todoist account's own and the server holds none, replacing the open question of how a timezone would be supplied. D-2 fixed that way: the counts mean what Todoist's filters mean, deadline-only tasks included, to match the Todoist app; both filter fetches use the 5000 ceiling, and each count takes `is_floor` from its own fetch. Decision recorded under R24, and D-2 left section 10. Three unreachable fallbacks removed from the D-2 tests to restore that file's branch coverage. AD-5 updated: the example agent now carries no defect warnings. Coverage recorded for `0a5ab95`. | Sections 4, 5, 6, 7, 8, 10 |
+| 11 | Independent code review of 2026-09-24 recorded verbatim in `docs/reviews/`. Seven findings reproduced against `04c46ec` and recorded as D-6 through D-12, which gate publication: URL reconstruction and undefanged URL forms, unsanitized and uncapped error results, a throwing numeric entity, dot-segment task ids, read-tool `limit` above `TODOIST_MAX_ITEMS`, an unguarded live script, and two tests that pass while their property is violated. The review's other findings recorded as D-13 through D-22, which do not gate publication. Invariants 1, 2 and 4 marked VIOLATED; 6, 8, 9 and 10 qualified; a VIOLATED status defined. No code or test changes. | Sections 5, 10 |
 
 ## 1. Purpose
 
@@ -466,7 +467,11 @@ about one function. Status reflects the security review and behavior
 inventory as of this writing.
 
 **Status** is a claim about the codebase: does the invariant hold right
-now. **Evidence** is a separate claim about how that is known. The two
+now. **HOLDS** means no counterexample is known. **VIOLATED** means a
+counterexample has been reproduced; the row names the defect in section 10
+that records it and the scope in which the invariant still holds, if any.
+A qualified HOLDS names the case it does not cover. **Evidence** is a
+separate claim about how that is known. The two
 are independent, and an invariant can be true while the evidence for it
 is weak. Grades:
 
@@ -491,18 +496,18 @@ tool-output assertion could not fail, which is why this column exists.
 
 | # | Invariant | Status | Evidence | Citation |
 |---|---|---|---|---|
-| 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **HOLDS** | **TESTED** (`find-projects`) / **INSPECTED** (six remaining read tools) | `test/mcp-e2e.test.js` — `'read tool output is framed and strips markup; token never leaks'`, which asserts the echoed project name matches exactly what `safeField` produces. Proven capable of failing by replacing `shapeProject`'s `safeField` call with `stripMarkup`, which failed this assertion alone. Proves `find-projects` routes through the framing helper; it does not prove the helper frames correctly, which is `test/sanitize.test.js`'s job. Remaining read tools covered by inspection of the shapers in `src/shape.js`. Behavior inventory §4–5, §8; review "Also checked" §3 |
-| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** | **TESTED** (`update-tasks`) / **INSPECTED** (four write tools framing an echoed field) / n/a (four echoing no Todoist-origin text, see AD-4) | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Proven capable of failing during Session 9 by replacing the `update-tasks` handler's `safeField(updated?.content, cfg.maxFieldChars)` call with `stripMarkup(updated?.content)`: the suite went to 71 of 72 with the failure confined to this test, and within it to the `safeField`-comparison assertion alone, while the three surrounding stripping assertions and the read-path framing test all stayed green. Reproducing this break requires widening the module's import to include `stripMarkup`. Without it the handler throws a `ReferenceError` that its own `try`/`catch` converts into an `isError` result, and the test fails on a different assertion for the wrong reason, which would look like confirmation while proving nothing. This assertion does not pin `cfg.maxFieldChars` plumbing; see section 8. |
+| 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **VIOLATED** on error responses (D-7). Holds for success responses. | **TESTED** (`find-projects`) / **INSPECTED** (six remaining read tools) | `test/mcp-e2e.test.js` — `'read tool output is framed and strips markup; token never leaks'`, which asserts the echoed project name matches exactly what `safeField` produces. Proven capable of failing by replacing `shapeProject`'s `safeField` call with `stripMarkup`, which failed this assertion alone. Proves `find-projects` routes through the framing helper; it does not prove the helper frames correctly, which is `test/sanitize.test.js`'s job. Remaining read tools covered by inspection of the shapers in `src/shape.js`. Behavior inventory §4–5, §8; review "Also checked" §3 |
+| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **VIOLATED** on error responses (D-7). Holds for success responses. | **TESTED** (`update-tasks`) / **INSPECTED** (four write tools framing an echoed field) / n/a (four echoing no Todoist-origin text, see AD-4) | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Proven capable of failing during Session 9 by replacing the `update-tasks` handler's `safeField(updated?.content, cfg.maxFieldChars)` call with `stripMarkup(updated?.content)`: the suite went to 71 of 72 with the failure confined to this test, and within it to the `safeField`-comparison assertion alone, while the three surrounding stripping assertions and the read-path framing test all stayed green. Reproducing this break requires widening the module's import to include `stripMarkup`. Without it the handler throws a `ReferenceError` that its own `try`/`catch` converts into an `isError` result, and the test fails on a different assertion for the wrong reason, which would look like confirmation while proving nothing. This assertion does not pin `cfg.maxFieldChars` plumbing; see section 8. |
 | 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | **UNGRADED** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
-| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **HOLDS** | **UNGRADED** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption. The dedicated `url` field is not an exemption: it is removed from tool output entirely (AD-6), covered by `test/url-removed-from-tool-output.test.js` and `test/no-url-key-in-output.test.js`. Those two were watched to fail before the removal, but the defanging tests above have not been graded, so the row stays UNGRADED. |
+| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **VIOLATED** (D-6, D-7). `stripMarkup` reassembles a live `http://` URL from split link syntax and leaves `ftp://`, letter-prefixed `https://` and bare `www.` hosts untouched; error responses carry upstream URLs unstripped. | **UNGRADED** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption. The dedicated `url` field is not an exemption: it is removed from tool output entirely (AD-6), covered by `test/url-removed-from-tool-output.test.js` and `test/no-url-key-in-output.test.js`. Those two were watched to fail before the removal, but the defanging tests above have not been graded, so the row stays UNGRADED. The `find-tasks` regression check in `test/invariant4-todoist-allowlist.test.js` also passes when the tool errors (D-12). |
 | 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **HOLDS** | **UNGRADED** | `test/invariant5-redirect-ssrf.test.js` — the invariant is now satisfied by refusing all redirects rather than by re-validating redirect targets, so no second URL is ever contacted |
-| 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** | **UNGRADED** | Behavior inventory §1, §7; `test/registration.test.js` |
+| 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** through the shipped entry point, `src/index.js`, which builds the config with `loadConfig`. Does not cover a direct `createServer` call whose config omits `readOnly`, which registers all nine write tools (D-19). | **UNGRADED** | Behavior inventory §1, §7; `test/registration.test.js` |
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | **UNGRADED** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
-| 8 | The server exposes write tools if and only if it was started with `TODOIST_READONLY` set to exactly `"false"`; this is decided once at startup, before any Todoist content is read, by not registering those tools at all, and cannot be changed for the lifetime of the running process. | **HOLDS** | **UNGRADED** | `test/registration.test.js` — `'read-only mode registers only the 7 read tools, no writes'`, `'read/write mode registers the full 16-tool set'`; behavior inventory §1, §7. (Per-request mode selection and human confirmation are out of scope for this invariant — see AD-1.) |
-| 9 | No log line emitted by `src/logger.js` contains the raw, unredacted API token. | **HOLDS** | **UNGRADED** | Behavior inventory §2–3, §6 (tested); review "Also checked" §3 — logger redacts every line, `client.js` never logs headers/bodies |
-| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** | **UNGRADED** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path) |
+| 8 | The server exposes write tools if and only if it was started with `TODOIST_READONLY` set to exactly `"false"`; this is decided once at startup, before any Todoist content is read, by not registering those tools at all, and cannot be changed for the lifetime of the running process. | **HOLDS** through the shipped entry point, `src/index.js`. Does not cover a direct `createServer` call whose config omits `readOnly` (D-19). | **UNGRADED** | `test/registration.test.js` — `'read-only mode registers only the 7 read tools, no writes'`, `'read/write mode registers the full 16-tool set'`; behavior inventory §1, §7. (Per-request mode selection and human confirmation are out of scope for this invariant — see AD-1.) |
+| 9 | No log line emitted by `src/logger.js` contains the raw, unredacted API token. | **HOLDS** for tokens of 4 or more characters. `loadConfig` accepts shorter tokens and `registerSecret` never registers them (D-17). | **UNGRADED** | Behavior inventory §2–3, §6 (tested); review "Also checked" §3 — logger redacts every line, `client.js` never logs headers/bodies |
+| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** for tokens of 4 or more characters. A shorter token is accepted by `loadConfig`, never registered, and leaks in an API error (D-17). | **UNGRADED** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path) |
 | 11 | `API_BASE` / outbound hostname is a fixed literal, never derived from any tool input. | **HOLDS** | **UNGRADED** | Behavior inventory §6; review Finding 5 discussion ("the host is hardcoded... never derived from any tool argument") |
-| 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **HOLDS** | **UNGRADED** | `test/result-builder-shape.test.js` — `'Invariant 12: a tool result object is constructed in exactly one place in src/, never ad hoc per tool'`. The check is by object shape (any `{ content: [{ type: 'text', ... }] }`-shaped literal outside the one designated builder function), not by function name. Verified by deliberately introducing a violating tool and confirming the test caught it at the exact line. |
+| 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **HOLDS** | **UNGRADED** | `test/result-builder-shape.test.js` — `'Invariant 12: a tool result object is constructed in exactly one place in src/, never ad hoc per tool'`. The check is by object shape (any `{ content: [{ type: 'text', ... }] }`-shaped literal outside the one designated builder function), not by function name. Verified by deliberately introducing a violating tool and confirming the test caught it at the exact line. The invariant holds, but it does not mean every result is sanitized: the builder's error branch only redacts (D-7). The shape check misses `{ content: blocks }`, computed keys and a builder result modified afterwards (D-22). |
 
 **On the framing evidence in Invariants 1 and 2.** Until Session 9, both
 rows cited assertions that checked only whether `FRAME_OPEN` and
@@ -1069,6 +1074,24 @@ resolved.
 An entry leaves this section when the defect is fixed and a test exists that
 fails if it returns.
 
+**D-6 onward.** These come from an independent code review dated
+2026-09-24, kept verbatim at
+`docs/reviews/2026-09-24-independent-code-review.md`. The reviewer was
+given `src/`, `test/`, `test-contract/` and `scripts/`, and not this spec,
+`README.md` or `docs/RESUME.md`. Unlike D-1 to D-5, some entries here are
+defects in tests or in the live scripts, not in `src/`. They are recorded
+here because they make a published claim false or leave a gating claim
+without evidence. The section 8 fixture-default entry predates this and
+stays where it is. Each entry says how it was confirmed: **Reproduced**
+means run against a scratch copy of `04c46ec` on 2026-09-24, with the
+exact input and output given; **by reading** means established from the
+code only; **review only** means taken from the review and not checked
+again.
+
+**Publication gate.** D-6 through D-12 gate publication. D-13 through
+D-22 do not. While D-6, D-7, D-8 or D-10 is open, `README.md`'s "Known
+defects" statement "No open defect affects tool output" is false.
+
 ### D-1
 
 Fixed in Session 10 by counting tasks up to a fixed 5000 and marking every count from a truncated fetch as a floor; see section 7, R24. This number is retired, not reused.
@@ -1111,3 +1134,569 @@ path.
 ### D-5
 
 Fixed in Session 10 by removing the `url` field from tool output; see AD-6. This number is retired, not reused.
+
+### D-6: Defanging can be undone, and three URL forms are never defanged
+
+**Gates publication.** **Reproduced.** Review property 15.
+
+`stripMarkup` defangs `https?://` matches first and removes inline
+Markdown link syntax afterwards, so link removal can join pieces into a
+live URL the defanging pass never saw. Separately, the defanging pattern
+matches only `http` and `https`, only at a word boundary, and only with a
+scheme, so other schemes, a scheme preceded by a letter, and a bare
+`www.` host are left alone.
+
+Reproduction, `stripMarkup` input to output:
+
+| Input | Output |
+|---|---|
+| `ht[tp](x)://evil.example/path` | `http://evil.example/path` |
+| `www.evil.example/path` | `www.evil.example/path` |
+| `[www.evil.example/path](https://www.evil.example/path)` | `www.evil.example/path` |
+| `ftp://evil.example/path` | `ftp://evil.example/path` |
+| `xhttps://evil.example/path` | `xhttps://evil.example/path` |
+
+The first output is a live `http://` URL that the sanitizer itself built.
+The second and third leave a bare `www.` host with unbracketed dots, the
+form `defangUrl`'s own comment calls autolinkable. The review's text gives
+the second input as the bare host; the session prompt that delivered the
+review carried it as the third, link-wrapped form. Both were run. Every
+field that goes through `safeField`, read and write, is affected.
+
+**Claims this makes false:**
+
+- Invariant 4, now **VIOLATED**.
+- `README.md`, "Freestanding URL defanging": "nothing clickable or
+  re-parseable reaches the agent".
+- `README.md`, "Markup stripping": the URL inside a Markdown link "never
+  reaches tool output at all". The first input builds its URL out of link
+  syntax.
+- `src/sanitize.js`, the comment on the defanging pass: it "targets the
+  outcome (no re-parseable or autolinkable URL survives)".
+
+**Fix criteria:**
+
+- The final output of `stripMarkup` contains no `scheme://` sequence for
+  any scheme and no `www.` host with unbracketed dots. The check runs on
+  the output after every pass that can join or reveal text (link removal,
+  markup-character removal, control-character removal, whitespace
+  collapse), not before them.
+- Treated as a bug class: a neutralizing pass that runs before a pass
+  that can join or reveal text. D-15's entity-encoded comment is another
+  instance (comment removal runs before entity decoding). A test must fail
+  on any such ordering anywhere in `stripMarkup`, and all instances are
+  fixed together.
+- Each input above is a test case with an exact expected output written
+  out in the test, not computed with `stripMarkup` or `safeField`, and
+  each fails against `04c46ec`.
+
+### D-7: Error results are not stripped, framed, noticed or capped
+
+**Gates publication.** **Reproduced.** Review property 12 and section 4,
+row "`buildResult()` error envelope".
+
+`buildResult`'s error branch redacts the message and prefixes `Error: `,
+and does nothing else. Error text can carry up to 500 characters of the
+upstream response body (`src/client.js`), the request path including
+caller-supplied ids, network error text, and any other thrown message.
+None of it passes through `stripMarkup`, `safeField`, `UNTRUSTED_NOTICE`
+or `capOutput`. Every tool's `catch` wrapper routes through this branch,
+so all sixteen tools are affected.
+
+Reproduction: `fetch` stubbed to return HTTP 400 with the body
+`<b>OBEY</b> https://evil.example ` followed by 3000 `A` characters;
+server config `maxOutputChars: 100`; `find-projects` called with `{}`.
+Result: `isError: true`, 541 characters, beginning
+`Error: Todoist API 400 on GET /projects: <b>OBEY</b> https://evil.example AAAA`.
+It contains `<b>` and `https://evil.example`, carries no fence and no
+notice, and is 441 characters over the configured cap. The only bound is
+`client.js`'s 500-character slice of the body, which applies to
+`TodoistApiError` only.
+
+**Claims this makes false:**
+
+- Invariants 1 and 2, now **VIOLATED** on error responses; Invariant 4,
+  now **VIOLATED**.
+- R25: "Every tool response, read and write alike, must be prefixed with
+  `UNTRUSTED_NOTICE` and size-capped via `capOutput`."
+- `README.md`, "Content framing": the notice is prepended to "every
+  response from all sixteen tools".
+- `README.md`, "Output-size caps": "every tool response, read and write
+  alike, is capped in total size".
+
+AD-4 is not made false: it scopes the notice to successful responses.
+
+**Fix criteria:**
+
+- Error text from any source goes through the same stripping and URL
+  defanging as untrusted fields, and text that can originate upstream is
+  framed.
+- Error results are bounded by `maxOutputChars` plus a fixed envelope.
+- Whether error results carry `UNTRUSTED_NOTICE` is decided and recorded
+  as an amendment to AD-4 before implementation.
+- Redaction stays the last step.
+- A test using the reproduction input above fails against `04c46ec`. It
+  asserts no `<b>`, no `https://`, the framed text as a literal expected
+  string, and total length within the bound.
+
+### D-8: One out-of-range numeric entity turns a whole read into an error
+
+**Gates publication.** **Reproduced.** Review property 14.
+
+`decodeHtmlEntities` passes every numeric entity to
+`String.fromCodePoint`, which throws `RangeError` above `0x10FFFF`. The
+throw escapes `stripMarkup`, `safeField` and the shaper, and the handler's
+`catch` turns the whole call into an error. Anyone who can write text into
+a task, project, section, label or comment can therefore stop every read
+tool that returns that object. That includes `get-overview` when the text
+is in a project, section or label name. This is the section 2 adversary
+using an availability path the spec does not mention.
+
+Reproduction: `fetch` stubbed so `GET /tasks` returns two tasks, with
+content `fine task` and `bad &#x110000; entity`; `find-tasks` called with
+`{}`. Result: `isError: true`, text `Error: Invalid code point 1114112`.
+The valid task is not returned either. The decimal form (`&#1114112;`)
+goes through the same call; that is by reading, not reproduced.
+
+**Claims this makes false:** none stated directly. R10 requires entities
+to be decoded and is silent on invalid ones. Recorded as gating because of
+the availability consequence above.
+
+**Fix criteria:**
+
+- `stripMarkup` and `safeField` do not throw for any string input. An
+  out-of-range or otherwise invalid numeric entity becomes U+FFFD or stays
+  as literal text. Which one is recorded under R10.
+- Tests cover hex and decimal forms at `0x110000` and at a value too large
+  for a double to hold exactly. Each fails against `04c46ec`.
+- Treated as a bug class: any exception raised while shaping one item
+  fails the whole result. Every shaper and every decoding or parsing call
+  it makes is checked for throws on hostile input.
+
+### D-9: Dot-segment task ids leave the task resource path
+
+**Gates publication.** **Reproduced.** Review property 8.
+
+`encodeURIComponent` leaves `.` unchanged, so an id of `.` or `..` becomes
+a path dot segment that `new URL()` normalizes away. The host stays
+`api.todoist.com`, so Invariants 5 and 11 are unaffected. The path is not.
+The id comes from the MCP caller, which under section 2 may be acting on
+injected content.
+
+Reproduction, with `fetch` stubbed to return HTTP 200 and record each
+request:
+
+| Tool and arguments | Request sent |
+|---|---|
+| `update-tasks` `{"tasks":[{"id":"..","priority":4}]}` | `POST https://api.todoist.com/api/v1/` |
+| `update-tasks` `{"tasks":[{"id":".","content":"hi"}]}` | `POST /api/v1/tasks/` with the body |
+| `complete-tasks` `{"ids":[".."]}` | `POST /api/v1/close` |
+| `uncomplete-tasks` `{"ids":["."]}` | `POST /api/v1/tasks/reopen` |
+| `reschedule-tasks` `{"tasks":[{"id":"..","due_string":"tomorrow"}]}` | `POST /api/v1/` |
+
+All five report success against the stub. What Todoist does with these
+requests is not established; no live request was made. The second row
+matters most: a caller-supplied body posted to the task collection path
+has the shape of task creation.
+
+**Claims this makes false:**
+
+- Section 6 and `README.md`'s write-tool table: `update-tasks` and
+  `reschedule-tasks` map to `POST /tasks/{id}`, `complete-tasks` to
+  `POST /tasks/{id}/close`, `uncomplete-tasks` to
+  `POST /tasks/{id}/reopen`. None of these holds for these ids.
+
+**Fix criteria:**
+
+- Every id put into a request path is validated before the request by a
+  single validator. It rejects empty ids, `.`, `..` and anything outside
+  an id pattern recorded in this spec together with its source.
+- Treated as a bug class: any caller-controlled value in a request path.
+  `request()` also refuses a composed URL whose normalized path differs
+  from the path it was given. A static test fails if any path passed to
+  `request()` interpolates a value that has not gone through the
+  validator.
+- A test with `.` and `..` for each of the four tools fails against
+  `04c46ec`.
+
+### D-10: A read tool's `limit` is not bounded by `TODOIST_MAX_ITEMS`
+
+**Gates publication.** **Reproduced.** Review property 19.
+
+Six read tools pass `a.limit ?? cfg.maxItems` to `getPaginated`, and the
+schema allows any positive integer, so a caller's `limit` replaces the
+configured cap rather than being bounded by it. `get-overview` takes no
+`limit` and is not affected.
+
+Reproduction: server config `maxItems: 5`; `fetch` stubbed to always
+offer another page; `find-projects` called with `{"limit":500}`. The
+client requested pages of 200, 200 and 100 items, and the payload
+reported `count: 500`. Output text is still bounded by `maxOutputChars`.
+The number of requests and the memory held are not. By reading, a very
+large `limit` pages until the API stops returning a cursor.
+
+**Claims this makes false:**
+
+- R17: "`getPaginated` must respect the configured item cap exactly".
+- `README.md`, "Output-size caps": "pagination is capped
+  (`TODOIST_MAX_ITEMS`, default 200 ...)". And the Configuration table:
+  `TODOIST_MAX_ITEMS` is "Max items fetched across pagination per read
+  call", with `get-overview` as the one exception.
+- R24, the D-1 decision: project, section and label names "keep the cap
+  every other tool uses". The rationale was that raising those caps widens
+  attacker-writable text reaching the agent, and `find-projects`,
+  `find-sections` and `find-labels` let the caller raise them.
+
+**Fix criteria:**
+
+- For every read tool, the number of items fetched is at most
+  `cfg.maxItems`. Whether a larger `limit` is clamped or rejected is
+  decided and recorded under R17.
+- Treated as a bug class: every `getPaginated` call site. A static test
+  fails if any call site passes a cap that is not bounded by
+  `cfg.maxItems` or `OVERVIEW_MAX_ITEMS`.
+- Tests use a `maxItems` that differs from the default (section 8), and
+  each fails against `04c46ec`.
+
+### D-11: `scripts/live-smoke-date.js` writes to whatever account its token opens
+
+**Gates publication.** **Reproduced.** Review property 22 and section 3.
+
+The script takes its token from `TODOIST_API_KEY` or
+`TODOIST_API_KEY_FILE` through `loadConfig`, never calls
+`verifyContractTestAccount`, and creates and completes a task.
+
+Reproduction, with `fetch` stubbed so no request left the machine:
+`TODOIST_API_KEY=not-a-real-token-000`, `TODOIST_READONLY=false`,
+`TODOIST_CONTRACT_TEST_TOKEN` and `TODOIST_CONTRACT_TEST_ACCOUNT_ID`
+unset. Requests, in order: `POST /api/v1/tasks`, five of
+`GET /api/v1/tasks/filter`, `POST /api/v1/tasks/T1/close`,
+`GET /api/v1/tasks`. There was no `GET /user`, and the first request was
+a write. The script exited 1 because its own checks failed on the stub's
+empty filter results, not because anything refused to run.
+
+**Claims this makes false:**
+
+- `README.md`, Tests: "Two further layers do touch a live account, and
+  both are guarded against writing to the wrong one." There are three,
+  and this one is unguarded. The README's Layout block also omits the
+  script.
+- `docs/RESUME.md` section 4, which said two places can write to a live
+  account. Corrected on 2026-09-24.
+
+**Fix criteria:**
+
+- The script calls `verifyContractTestAccount` before its first request
+  and uses only the verified contract token, removing `TODOIST_API_KEY`
+  and `TODOIST_API_KEY_FILE` from the environment it loads config from,
+  as `scripts/live-smoke.js` does.
+- Treated as a bug class: any file in `scripts/` or `test-contract/` that
+  can send a non-GET request. A static test fails if such a file does
+  not call the guard before its first request. It is proven by removing
+  the guard from `scripts/live-smoke.js` and watching it fail.
+- `README.md` lists all three live paths and the Layout block includes
+  the script.
+
+### D-12: Two tests pass while the property they name is violated
+
+**Gates publication.** **Reproduced.** Review section 3, table rows 1
+and 10.
+
+1. `test/client.test.js`, "API error text never leaks the token". The
+   fixture token is `tok` (three characters, so under R6 it is never
+   registered) and the stubbed 401 body is
+   `Unauthorized: token tok is invalid`. The test asserts only
+   `err.status === 401`. Reproduction: the same fixture produces
+   `err.message` = `Todoist API 401 on GET /tasks: Unauthorized: token tok is invalid`,
+   which contains the token, and the test passes on `04c46ec`. With
+   `redact(detail)` replaced by `detail` in `src/client.js` it still
+   passes.
+2. `test/invariant4-todoist-allowlist.test.js`, "REGRESSION CHECK: no
+   Todoist task url survives in find-tasks output". It asserts only that
+   the url and `"url"` are absent. Reproduction: with the `find-tasks`
+   handler's body replaced by
+   `throw new Error('handler replaced by generic failure')`, the tool
+   returns `isError: true` with text
+   `Error: handler replaced by generic failure`, and the test passes.
+
+**Claims this makes false:**
+
+- AD-6, Evidence: "the `find-tasks` regression check requires that no
+  task url survives". It does so only if the tool succeeds, and it does
+  not check that.
+- Invariant 4's citation of that file, now noted in the table.
+- The first test's own name.
+
+**Fix criteria:**
+
+- Test 1 asserts that `err.message` does not contain the token, uses a
+  token that is registered, and is proven by removing `redact(detail)`
+  and watching it fail. The unregistered short token is D-17.
+- Test 2 asserts success, parses the payload, finds task `999` with its
+  content, and only then asserts the key is absent. It is proven by the
+  throwing replacement above.
+- Treated as a bug class: a negative assertion that a failure also
+  satisfies. Every test in `test/` whose only assertions on a tool result
+  or thrown error are absences also asserts the success or the specific
+  error it expects. A static test fails on any test that calls `callTool`
+  and makes no assertion on `isError`. It is proven by planting one.
+
+### D-13: Output and field caps bound a prefix, not the response
+
+**Does not gate publication.** Review properties 16, 17 and 18.
+
+- **Reproduced.** `buildResult({ maxOutputChars: 30 }, { payload: { name: safeField('x' × 100) } })`
+  returns 310 characters. After the notice, the body is `{`, a newline,
+  then `  "name": "‹UNTRUSTED›xxxxxx` followed by the truncation suffix.
+  The field's closing fence is gone.
+- By reading. The notice and the truncation suffix are added after the
+  cap, and redaction runs after that and can lengthen the text.
+  `safeField`'s cap counts UTF-16 code units, so it can split a surrogate
+  pair, and the fences and truncation marker come on top of it. Both caps
+  are applied after full sanitization and full serialization, so neither
+  bounds CPU or memory.
+- Error results are not capped at all; that is D-7.
+
+**Claim this makes false:** `README.md`, "Output-size caps": every
+response "is capped in total size".
+
+**Fix criteria:** decide whether the caps are total bounds or prefix
+bounds, and make `README.md` and R11/R12 say which. Truncation never
+leaves an open fence. A test with a small cap asserts the exact output.
+
+### D-14: Pagination can report a short result as complete, and can loop without end
+
+**Does not gate publication.** Review properties 19 and 20.
+
+- **Reproduced.** With a cap of 2, a cursor-form page carrying three
+  results and `next_cursor: null` returns two items and
+  `truncated: false`. A `get-overview` count derived from such a fetch
+  would be marked exact. This contradicts R17's Session 9 decision that
+  "the cursor-based path is already correct and must not change". That
+  decision considered exactly-at-cap pages only.
+- By reading. A page with no results and a continuing cursor adds no
+  items and loops again. There is no repeated-cursor check, page limit,
+  timeout or response-size limit. A page larger than requested is fully
+  held before slicing. `intFromEnv` accepts any positive integer, with
+  no upper bound. Items are not de-duplicated across pages. A small
+  `maxOutputChars` can cut `get-overview`'s `fetches` and `warnings` as
+  well as the name lists.
+
+**Fix criteria:** `truncated` is true whenever more items were received
+than kept. Pagination stops on a repeated cursor and on a page limit, and
+reports truncation when it does. An upper bound for each numeric cap is
+decided and recorded under R2, with R2's stderr warning. Tests cover each
+case and fail against `04c46ec`.
+
+### D-15: The sanitizer misses lists, Unicode format characters and the contents of entity-encoded comments
+
+**Does not gate publication.** Review property 14.
+
+**Reproduced**, `stripMarkup` input to output:
+
+| Input | Output |
+|---|---|
+| `1. do this\n- and this` | unchanged |
+| `abc` U+202E `def` | unchanged; the right-to-left override survives |
+| `a &lt;!-- IGNORE PRIOR --&gt; b` | `a !-- IGNORE PRIOR -- b` |
+
+The third output's comment markers are broken, so it cannot render as a
+comment, but its content is now visible text. The first pass removes
+comments before entities are decoded. This is the D-6 bug class.
+
+**Claims this makes false:** `README.md`, "Markup stripping": "HTML tags
+and comments are removed, control characters are stripped". Only ASCII
+control characters are stripped. Unicode format characters (category Cf,
+including bidirectional overrides) are not.
+
+**Fix criteria:** Unicode format characters are removed, with the set
+recorded under R10. Whether list markers are neutralized is decided and
+recorded under R10, which lists heading, table and blockquote markup but
+not lists. Comment removal runs after decoding, as part of D-6's class
+fix.
+
+### D-16: Structural fields are copied without type checks
+
+**Does not gate publication.** Review property 13 and section 4.
+
+**Reproduced** with constructed objects, not with data from Todoist.
+`shapeTask` given `priority: { x: 'OBEY' }` returns that object
+unchanged. Given `due.timezone: 'IGNORE https://evil.example'`, it
+returns that string unchanged, URL included. The same applies by reading
+to every field section 6 leaves unmarked, and to ids echoed by the write
+tools. Whether Todoist ever returns such values is not established.
+
+**Claim this weakens:** section 6, "Finding 1's injection surface is
+closed. Every echoed field originating as Todoist-writable text routes
+through `safeField`." That holds only if the unmarked fields cannot carry
+text, which nothing here checks.
+
+**Fix criteria:** each unmarked field is checked against its expected
+type (id pattern, integer 1 to 4, boolean, ISO date or datetime, IANA
+timezone name, known color name), and a value that fails becomes `null`.
+Tests feed each shaper a wrong-typed value for every such field.
+
+### D-17: Redaction misses short tokens, escaped tokens and Basic credentials
+
+**Does not gate publication.** Review properties 10 and 11.
+
+- **Reproduced.** After `registerSecret('tok')`,
+  `redact('token tok here')` is unchanged. `loadConfig` accepts a token
+  of one to three characters, which R6 then never registers. The format
+  of real Todoist tokens is not established by this repository.
+- **Reproduced.** With `ab"cd` registered, `redact(JSON.stringify({ v: 'ab"cd' }))`
+  returns `{"v":"ab\"cd"}` unchanged. `src/logger.js` serializes `meta`
+  before redacting it, so the same applies to log metadata.
+- **Reproduced.** `redact('Authorization: Basic abcdefghijklmnop')`
+  returns `Authorization: [REDACTED] abcdefghijklmnop`. The credential
+  survives.
+- By reading. `createClient` does not register its token; only
+  `createServer` does.
+
+**Claims this makes false:** R7, "`authorization: <value>`-shaped
+substrings" are redacted. The scheme word is replaced and the value
+survives. `README.md`, "Token redaction": `Authorization:` material "is
+redacted generically". Invariants 9 and 10 are qualified in the table.
+
+**Fix criteria:** `loadConfig` rejects a token too short to register, or
+registration accepts every token the config holds. Escaped forms of each
+registered secret are redacted, or tokens containing characters that JSON
+escapes are rejected. The Authorization pattern consumes the whole header
+value. `createClient` registers its token. Tests cover each.
+
+### D-18: Tool input validation is looser than the tool descriptions
+
+**Does not gate publication.** Review properties 4 and 5.
+
+By reading:
+
+- Ids and dates are unrestricted strings. Their path consequence is D-9.
+  `find-tasks-by-date` puts `date` verbatim into the filter query and
+  returns that query as `filter`. Section 6 describes `filter` as
+  "server-built ... not echoed". It is echoed, and its content is partly
+  caller-supplied.
+- No string or batch length has an upper bound. Write batches are
+  unbounded.
+- `reschedule-tasks` accepts several due fields at once. Section 6
+  describes the input as "one of `due_string`/`due_date`/`due_datetime`".
+- `find-comments` and `add-comments` treat an empty-string id as absent.
+  In `add-comments`, an empty second id is still sent in the request
+  body.
+- `add-comments` validates each item just before writing it, so an
+  invalid later item fails the call after earlier comments were created.
+  The partial-write consequence is already disclosed (section 3, R28).
+  What is new is that validating the whole batch before the first write
+  would prevent this case.
+
+**Fix criteria:** every batch tool validates all items before its first
+write. Batch size and string lengths have recorded maximums.
+`reschedule-tasks` takes exactly one due field. Empty-string ids are
+rejected, using D-9's validator.
+
+### D-19: Registration and client boundaries are wider than their comments say
+
+**Does not gate publication.** Review properties 1, 2, 3 and 6.
+
+- **Reproduced.** `createServer({ apiKey: 'zzzzzz', maxItems: 1 })`, with
+  no `readOnly`, registers all nine write tools. The shipped entry point
+  always passes a boolean from `loadConfig`. R18 as written specifies
+  this: writes register "when `cfg.readOnly` is falsy". Invariants 6 and
+  8 are qualified in the table.
+- By reading. `src/server.js`'s header says that in read-only mode "the
+  write module is never imported/called". It is imported statically in
+  every mode; it is only not called.
+- By reading. `createClient().request()` accepts any method and path, and
+  has no read-only check. `test-contract/update-task-partial.contract.js`
+  sends a `DELETE` directly with `fetch` to clean up. Section 1 says
+  destructive operations "remain human-only". That holds for the tool
+  surface, not for this repository.
+- **Reproduced.** `assertAllowedUrl('https://u:p@api.todoist.com:8443/x')`
+  is accepted. R14 says "exact-match `https://api.todoist.com` only". The
+  host and scheme are exact-matched, but userinfo, port and path are not
+  checked. Not reachable through the tools while `API_BASE` is a literal.
+
+**Fix criteria:** write tools register only when `cfg.readOnly === false`,
+and R18 is amended to match. The `server.js` comment is corrected. Section
+1 is scoped to the tool surface. `assertAllowedUrl` rejects userinfo, any
+port other than the default, and any path outside `/api/v1/`.
+
+### D-20: The token file's permissions are described but not checked
+
+**Does not gate publication.** Review property 9. By reading.
+
+`src/config.js` describes `TODOIST_API_KEY_FILE` as a "0600,
+claudecode-owned" file. Nothing checks mode, owner, file type or
+symlinks. Any readable file with non-empty trimmed contents is accepted.
+`README.md`'s credential storage section is advice and remains accurate.
+
+**Fix criteria:** decide whether startup refuses a token file that is
+group- or world-readable, or not a regular file. Record the decision
+under R3/R4, and make the comment match what the code does.
+
+### D-21: The live scripts and the account guard check less than they report
+
+**Does not gate publication.** Review property 22 and the review's
+"Additional supplied executable checks". By reading.
+
+- `verifyContractTestAccount` shows that an id matches, not that the
+  account is disposable. It is only as safe as the id it is given.
+- The guard's `fetch` and the direct fetches in
+  `test-contract/update-task-partial.contract.js` send the contract token
+  without `redirect: 'manual'`. AD-3 covers only `src/client.js`.
+- The guard's mismatch error embeds `id` and `email` from the response
+  unsanitized, and a `fetch` failure propagates without redaction.
+- `scripts/live-smoke.js` prints the read-back and completion results
+  without asserting success, so it can print its success conclusion over
+  tool errors.
+- `scripts/stdio-check.js` prints the tool list and asserts nothing.
+  `README.md` says it confirms "the read-only vs. read/write split"; a
+  person reading the output does that, not the script.
+- `scripts/live-smoke-date.js`'s header says it "proves the date path"
+  through `/tasks/filter`. It prints the recorded paths and does not
+  assert them.
+
+**Fix criteria:** the guard and every contract fetch refuse redirects and
+redact what they throw. The smoke scripts assert what they print and exit
+non-zero on failure. `stdio-check.js` asserts the expected tool set for
+its mode. The disposable-account assumption is written into section 9.
+
+### D-22: Test assertions that a regression would still satisfy
+
+**Does not gate publication.** Review section 3. Each item is review
+only unless marked. These bear on the Evidence column in section 5, and
+each is fixed by making the named mutation turn the test red.
+
+- `test/client.test.js`, "assertAllowedUrl blocks host override attempts
+  in the base path": it makes no override attempt.
+- `test/config.test.js`: "an unreadable key file ..." matches only a
+  phrase, so appending the OS error and path still passes (R4). "loadConfig
+  throws without a token and never echoes it" supplies no token (R5).
+- `test/mcp-e2e.test.js`, read framing test: the token appears only in the
+  request header, so disabling result redaction passes its token
+  assertion. Both framing tests compute their expected value with
+  production `safeField`, and `test/sanitize.test.js`'s delimiter test
+  uses the exported markers. So no test pins the marker strings
+  themselves.
+- `test/mcp-e2e.test.js`, "read tool enforces the output-size cap on a
+  large list": it asserts only the phrase `output truncated`.
+- `test/mcp-e2e.test.js`, the normal-content secret test and both
+  plain-Error tests register their secret by hand. Removing
+  `createServer`'s `registerSecret` call goes unnoticed. These are
+  Invariant 3's and Invariant 10's cited evidence.
+- `test/registration.test.js` inspects the returned name arrays, not the
+  SDK registry. `test/mcp-e2e.test.js`, "client sees write tools only in
+  read/write mode", checks two names and a count. Invariants 6, 7 and 8
+  cite `test/registration.test.js`.
+- `test/result-builder-shape.test.js` misses `{ content: blocks }`,
+  computed keys and a builder result modified afterwards, and cannot
+  notice protections being removed inside `buildResult` (Invariant 12).
+- `test/no-url-key-in-output.test.js` misses `file_url` and URLs under
+  other keys. Shorthand, computed keys and spreads are already recorded
+  in AD-6.
+- `test/sanitize.test.js`: the per-field cap test passes with a cap of
+  150 for 100, and the `capOutput` test passes when 550 characters are
+  kept for 500. Both entity-decoding tests assert absence only.
+- `test/get-overview-truncation.test.js`: the D-1 key-order test never
+  forces truncation, and the D-2 description test matches the words
+  `filter` and `timezone` only.
+- The R17 pagination tests omit an overlong cursor-form page (D-14).
