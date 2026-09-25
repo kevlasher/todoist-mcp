@@ -34,12 +34,12 @@ function decodeCodePoint(digits, radix) {
 }
 
 /**
- * Decode HTML entities — numeric (decimal and hex) first, then the common
- * named ones — in a single pass. Numeric entities must be decoded before
- * both the tag-stripping pass and URL neutralization below: otherwise an
- * entity-encoded tag or URL scheme (e.g. `&#60;script&#62;`, `http&#58;//`)
- * survives as inert-looking text that a downstream renderer could still
- * decode into a live tag or link.
+ * Decode HTML entities, numeric (decimal and hex) first and then the five
+ * common named ones, in a single pass. stripMarkup runs this before any other
+ * pass, so an entity-encoded comment, tag or URL scheme (e.g.
+ * `&lt;!-- x --&gt;`, `&#60;script&#62;`, `http&#58;//`) is removed or
+ * defanged exactly like its literal form, rather than surviving as
+ * inert-looking text that a downstream renderer could decode (D-15).
  */
 function decodeHtmlEntities(text) {
   return text
@@ -53,52 +53,89 @@ function decodeHtmlEntities(text) {
 }
 
 /**
- * Defang a matched URL in place: break the scheme (http -> hxxp, https ->
- * hxxps) and every dot (. -> [.]) so the text can neither autolink nor be
- * re-parsed back into a live URL, while staying human-readable enough for a
- * person to reconstruct it by hand. Dots are broken everywhere in the match,
- * not just in the host, because breaking only the scheme leaves a bare
- * `www.host.tld` that some clients autolink without a scheme at all. Every
- * occurrence of "http" in the match is defanged, not just a leading one, so
- * a scheme smuggled inside a query string or path (e.g.
- * `?next=https://host`) can't survive as a second, live URL.
+ * Apply `pass` until it changes nothing. Used for passes that delete text:
+ * deleting one comment, tag or link can join what is left into another,
+ * so a single run is not enough. Every pass given here only deletes, so
+ * each round that changes the text shortens it and the loop ends.
  */
-function defangUrl(url) {
-  return url.replace(/http/gi, 'hxxp').replace(/\./g, '[.]');
+function untilStable(text, pass) {
+  let prev;
+  do {
+    prev = text;
+    text = pass(text);
+  } while (text !== prev);
+  return text;
 }
 
-/** Strip HTML tags and comments, and neutralize markdown control syntax. */
+/**
+ * Defang a matched URL in place so the text can neither autolink nor be
+ * re-parsed back into a live URL, while staying human-readable enough for a
+ * person to reconstruct it by hand (AD-2, R10):
+ *   - every "http" becomes "hxxp", so http:// and https:// read hxxp:// and
+ *     hxxps://, including a scheme smuggled into a query string or path
+ *     (e.g. `?next=https://host`) and a letter-prefixed one (`xhttps://`);
+ *   - any other `://`, whatever scheme precedes it, has its colon bracketed:
+ *     `ftp[:]//`;
+ *   - every dot becomes `[.]`, because breaking only the scheme leaves a bare
+ *     `www.host.tld` that some clients autolink without a scheme at all.
+ */
+function defangUrl(url) {
+  return url
+    .replace(/http/gi, 'hxxp')
+    .replace(/(?<!hxxps?):\/\//gi, '[:]//')
+    .replace(/\./g, '[.]');
+}
+
+/**
+ * Defang every URL-shaped sequence: any `scheme://`, where the scheme is the
+ * whole run of letters, digits, `+`, `.` and `-` before the colon (so a
+ * letter-prefixed scheme is matched from its first letter), and any bare
+ * `www.` host. This targets the outcome (no re-parseable or autolinkable URL
+ * survives) rather than enumerating carrier syntaxes, and applies uniformly
+ * to every host, with no allowlist and no exemptions. The lookbehind makes each
+ * match start where its run of scheme characters starts, which also keeps
+ * the scan linear.
+ */
+function defangUrls(text) {
+  return text.replace(
+    /(?<![a-z0-9+.-])[a-z0-9+.-]*:\/\/[^\s<>()[\]"']*|www\.[^\s<>()[\]"']*/gi,
+    defangUrl
+  );
+}
+
+/**
+ * Strip HTML tags and comments, and neutralize markdown control syntax.
+ *
+ * Pass order is the control (D-6). A pass that decodes or deletes text can
+ * reveal or join a construct that an earlier neutralizing pass has already
+ * looked for, so: decoding runs first; the passes that delete text repeat
+ * together until nothing changes; and URL defanging runs last, after every
+ * pass that can join or reveal text. test/d6-url-defang-order.test.js checks
+ * this order statically.
+ */
 export function stripMarkup(input) {
   let text = typeof input === 'string' ? input : String(input ?? '');
 
-  // Remove HTML comments and any literal (non-entity-encoded) tags outright.
-  text = text.replace(/<!--[\s\S]*?-->/g, '');
-  text = text.replace(/<\/?[a-zA-Z][^>]*>/g, '');
-
-  // Decode entities, then re-strip tags a second time so an entity-encoded
-  // tag can't survive, then neutralize any angle brackets still left over.
+  // Decode entities before anything else looks at the text.
   text = decodeHtmlEntities(text);
-  text = text.replace(/<\/?[a-zA-Z][^>]*>/g, ''); // second pass after decode
-  text = text.replace(/[<>]/g, ' ');
 
-  // Reassemble a URL scheme run that was split by a single soft line break
-  // (as opposed to a blank-line paragraph break), so a downstream renderer
-  // that collapses soft wraps can't reconstruct a URL we failed to catch.
-  text = text.replace(
-    /(https?:\/\/[^\s]*)[ \t]*\r?\n(?!\r?\n)[ \t]*([^\s]*)/gi,
-    '$1$2'
+  // Remove HTML comments and tags; replace markdown links and images with
+  // their visible label, dropping the target; and rejoin a URL split by a
+  // single soft line break (as opposed to a blank-line paragraph break), so
+  // a downstream renderer that collapses soft wraps can't rebuild it. The
+  // line-break join matches only at a line break and looks back through the
+  // one token before it, so it stays linear. Each of these deletes text, so
+  // they repeat together until stable.
+  text = untilStable(text, (t) =>
+    t
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .replace(/<\/?[a-zA-Z][^>]*>/g, '')
+      .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/(?=[ \t]*\r?\n(?!\r?\n))(?<=(?::\/\/|www\.)\S*)[ \t]*\r?\n[ \t]*/gi, '')
   );
 
-  // Defang any URL-shaped sequence, regardless of what markup (or lack of
-  // it) surrounds it — bare text, a reference-style definition line, an
-  // entity-decoded scheme, etc. This targets the outcome (no re-parseable
-  // or autolinkable URL survives) rather than enumerating carrier syntaxes,
-  // and applies uniformly to every host — no allowlist, no exemptions.
-  text = text.replace(/\bhttps?:\/\/[^\s<>()[\]"']+/gi, defangUrl);
-
-  // Neutralize markdown link / image syntax: keep the visible label, drop the
-  // target so no clickable/again-parseable URL survives.
-  text = text.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1');
+  // Neutralize any angle brackets still left over.
+  text = text.replace(/[<>]/g, ' ');
 
   // Defang emphasis / code / heading markers so the value can't render as
   // formatted instructions. Spaced out rather than deleted, to keep words.
@@ -112,7 +149,8 @@ export function stripMarkup(input) {
   text = text.replace(/[ \t]{2,}/g, ' ');
   text = text.replace(/\n{3,}/g, '\n\n');
 
-  return text.trim();
+  // Defang URLs last, so no later pass can reassemble one.
+  return defangUrls(text.trim());
 }
 
 /**

@@ -30,6 +30,7 @@ Maintenance: one row per session, added when the session ends.
 | 14 | D-8 fixed: a numeric entity whose code point is zero, a surrogate (0xD800 to 0xDFFF) or above 0x10FFFF now decodes to U+FFFD through `decodeCodePoint` in `src/sanitize.js`, as the HTML standard does for invalid numeric character references; valid entities decode as before. Decision recorded under R10. Test-first `be91ced`, implementation `bf2124d`. `test/d8-invalid-numeric-entity.test.js` covers hex and decimal forms, the surrogate range, zero, 2^53+1, digit runs past Infinity and the 0x10FFFF / 0x110000 boundary, and shows `find-tasks` returning every task when one carries a bad entity. For the bug class it feeds every shaper hostile text in each framed field, and a static check allows `String.fromCodePoint` in `src/` only inside `decodeCodePoint`; a planted raw call in `src/shape.js` turns it red. It found no other string-input throw. Two wrong-type throws it found, an object text field with no usable `toString` and a `null` item, recorded under D-16 and not fixed. D-8 left section 10. Coverage recorded for `bf2124d`. | Sections 7, 8, 10 |
 | 15 | D-9 fixed: every id a tool places in a request path must be one or more ASCII letters or digits, recorded as R30 with its source, Todoist's API v1 reference, checked 2026-09-25. `assertPathId` in `src/client.js` is the single validator. `update-tasks`, `complete-tasks`, `uncomplete-tasks` and `reschedule-tasks` check every id before the first request, so one bad id refuses the whole batch. `request()` also refuses a path that URL parsing would change or that has an empty segment. Test-first `bbbdd0c`, implementation `24b7e06`. `test/d9-path-id.test.js` runs D-9's reproduction inputs and 20 refused forms against each of the four tools. For the bug class, a static check fails on any `request()` or `getPaginated()` path in `src/` that interpolates anything but `assertPathId(...)`; it found the four known sites and no others. The hyphenated ids in two read-tool fixtures were left as they are because they never reach a request path. D-18 updated. D-9 left section 10. Coverage recorded for `24b7e06`. | Sections 6, 7, 8, 10 |
 | 16 | D-10 fixed: a read tool's `limit` may lower `TODOIST_MAX_ITEMS` but never raise it. The effective cap is the smaller of `limit` and `cfg.maxItems`; a larger `limit` is held to the cap, not refused, and `truncated` reports a list cut short. Decision recorded under R17. `get-overview`'s 5000 ceiling (R24) is unaffected. `itemCap` in `src/tools/read.js` is the single bounding helper, used at all seven `getPaginated` call sites in the six tools that take a `limit`, and the shared `limit` schema's description says it cannot raise the cap. Test-first `f082acf`, implementation `992bd06`. `test/d10-limit-bounded.test.js` runs D-10's reproduction input against every read tool with a `limit`, found from `tools/list`, with `find-tasks` once per endpoint and `find-comments` once per scope. For the bug class, any caller-supplied value that can raise a configured cap, a static check requires every cap argument to `getPaginated`, `safeField`, `frameLabels`, `shapeDue` and `capOutput` in `src/` to be a form bounded by configuration, and forbids writing a cap key outside `src/config.js`; it found the seven known call sites and no others. D-10 left section 10. Coverage recorded for `992bd06`. | Sections 7, 8, 10 |
+| 17 | D-6 fixed, together with D-15's entity-encoded comment. `stripMarkup` decodes entities before any other pass, removes comments, tags and Markdown link syntax and rejoins soft-wrapped URLs in one group repeated until stable, and defangs URLs as its last pass. Defanging covers any `scheme://`, matched from the start of its run of scheme characters, and bare `www.` hosts; `http` and `https` keep `hxxp` and `hxxps`, any other scheme gets `[:]//`, and dots are bracketed in every case. Decisions recorded under R10. Test-first `fd21ec7`, implementation `5d8d7c0`. `test/d6-url-defang-order.test.js` checks exact outputs for D-6's and D-15's reproduction inputs, runs them through `find-tasks`, and runs a generative check over 12290 inputs. For the bug class, a static check over every named function in `src/` found two more instances in `stripMarkup`, a tag joining a comment opener and a nested link revealed by link removal, and none elsewhere; both are fixed. The soft-wrap join is now linear. Named entities the decoder does not know, found during the fix, recorded under D-15. D-7's notice question decided: error results get the same treatment as success results. Invariant 4 is now VIOLATED on error responses only (D-7). D-6 left section 10 and D-15 was narrowed. Coverage recorded for `5d8d7c0`. | Sections 5, 7, 8, 10 |
 
 ## 1. Purpose
 
@@ -514,7 +515,7 @@ tool-output assertion could not fail, which is why this column exists.
 | 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **VIOLATED** on error responses (D-7). Holds for success responses. | **TESTED** (`find-projects`) / **INSPECTED** (six remaining read tools) | `test/mcp-e2e.test.js` — `'read tool output is framed and strips markup; token never leaks'`, which asserts the echoed project name matches exactly what `safeField` produces. Proven capable of failing by replacing `shapeProject`'s `safeField` call with `stripMarkup`, which failed this assertion alone. Proves `find-projects` routes through the framing helper; it does not prove the helper frames correctly, which is `test/sanitize.test.js`'s job. Remaining read tools covered by inspection of the shapers in `src/shape.js`. Behavior inventory §4–5, §8; review "Also checked" §3 |
 | 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **VIOLATED** on error responses (D-7). Holds for success responses. | **TESTED** (`update-tasks`) / **INSPECTED** (four write tools framing an echoed field) / n/a (four echoing no Todoist-origin text, see AD-4) | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Proven capable of failing during Session 9 by replacing the `update-tasks` handler's `safeField(updated?.content, cfg.maxFieldChars)` call with `stripMarkup(updated?.content)`: the suite went to 71 of 72 with the failure confined to this test, and within it to the `safeField`-comparison assertion alone, while the three surrounding stripping assertions and the read-path framing test all stayed green. Reproducing this break requires widening the module's import to include `stripMarkup`. Without it the handler throws a `ReferenceError` that its own `try`/`catch` converts into an `isError` result, and the test fails on a different assertion for the wrong reason, which would look like confirmation while proving nothing. This assertion does not pin `cfg.maxFieldChars` plumbing; see section 8. |
 | 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | **UNGRADED** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
-| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **VIOLATED** (D-6, D-7). `stripMarkup` reassembles a live `http://` URL from split link syntax and leaves `ftp://`, letter-prefixed `https://` and bare `www.` hosts untouched; error responses carry upstream URLs unstripped. | **UNGRADED** | `test/invariant4-url-embedding.test.js`, `test/invariant4-todoist-allowlist.test.js` — URLs are defanged (scheme broken to `hxxp`/`hxxps`, dots bracketed) rather than deleted, applied uniformly to every host with no allowlist or exemption. The dedicated `url` field is not an exemption: it is removed from tool output entirely (AD-6), covered by `test/url-removed-from-tool-output.test.js` and `test/no-url-key-in-output.test.js`. Those two were watched to fail before the removal, but the defanging tests above have not been graded, so the row stays UNGRADED. The `find-tasks` regression check in `test/invariant4-todoist-allowlist.test.js` requires success and the returned fixture task before asserting the `url` key absent, and fails when the handler throws (fixed in `6a99b01`, D-12). `test/calltool-asserts-iserror.test.js` fails on any test that calls `callTool` without asserting on `isError`. |
+| 4 | No tool output contains a URL in re-parseable or clickable form, regardless of the syntax used to embed it in the source text. | **VIOLATED** on error responses (D-7), which carry upstream URLs unstripped. Holds for success responses, for every `scheme://` and bare `www.` host, however the URL is split by markup the sanitizer removes (D-6, fixed Session 17). Does not cover named entities other than `&lt;`, `&gt;`, `&amp;`, `&quot;` and `&apos;`, such as `&colon;` and `&period;`, which pass through undecoded, so a consumer that decodes them sees a URL (D-15). | **TESTED** (`stripMarkup`, `safeField`, `find-tasks`) / **INSPECTED** (the other tools, whose Todoist text reaches output only through `safeField`) | `test/d6-url-defang-order.test.js`. Its exact-output tests, its `find-tasks` test and its generative test over 12290 inputs failed on their assertions against `c11aa6c` (test-first `fd21ec7`) and pass at `5d8d7c0`. Its static check fails on any neutralizing pass in `src/` that runs before a pass that can join or reveal text, and on a `stripMarkup` whose last pass is not the URL defang; in Session 17 it went red when the defang was moved ahead of the removal group in `src/sanitize.js`, and again when entity decoding was moved after it. `test/invariant4-url-embedding.test.js` and `test/invariant4-todoist-allowlist.test.js` also assert defanging, applied uniformly to every host with no allowlist or exemption; those have not been graded. The dedicated `url` field is not an exemption: it is removed from tool output entirely (AD-6), covered by `test/url-removed-from-tool-output.test.js` and `test/no-url-key-in-output.test.js`, both watched to fail before the removal. The `find-tasks` regression check in `test/invariant4-todoist-allowlist.test.js` requires success and the returned fixture task before asserting the `url` key absent, and fails when the handler throws (fixed in `6a99b01`, D-12). `test/calltool-asserts-iserror.test.js` fails on any test that calls `callTool` without asserting on `isError`. |
 | 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **HOLDS** | **UNGRADED** | `test/invariant5-redirect-ssrf.test.js` — the invariant is now satisfied by refusing all redirects rather than by re-validating redirect targets, so no second URL is ever contacted |
 | 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** through the shipped entry point, `src/index.js`, which builds the config with `loadConfig`. Does not cover a direct `createServer` call whose config omits `readOnly`, which registers all nine write tools (D-19). | **UNGRADED** | Behavior inventory §1, §7; `test/registration.test.js` |
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | **UNGRADED** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
@@ -663,6 +664,19 @@ judgment.
   numeric character references; valid numeric entities decode to their
   code point. `stripMarkup` and `safeField` must not throw for any string
   input (D-8, Session 14).
+
+  **DECIDED, Session 17 (D-6).** Pass order: entities are decoded before
+  any other pass. Comment removal, tag removal, Markdown link removal and
+  the soft-wrap URL join each delete text, so they repeat together until a
+  round changes nothing. URL defanging is the last pass, after every pass
+  that can join or reveal text, so no later pass can reassemble a URL.
+
+  URL defanging covers any `scheme://`, where the scheme is the whole run
+  of letters, digits, `+`, `.` and `-` before the colon, matched even when
+  letters immediately precede it, and any bare `www.` host. Every `http`
+  in the match becomes `hxxp`, so `http` and `https` keep the `hxxp://`
+  and `hxxps://` form; any other `://` becomes `[:]//`; every dot in the
+  match becomes `[.]`.
 - R11. `safeField` must return unframed empty string for empty/whitespace-
   only/markup-only input, must neutralize literal fence-marker strings found
   inside the value (preventing forged fence boundaries), and must truncate
@@ -1104,6 +1118,23 @@ which reaches its validation branches. The test-first commit `f082acf`
 measured 98.43% / 92.82% / 96.38%. `src/tools/write.js` function
 coverage is unchanged at 76.47%.
 
+Session 17, at commit `5d8d7c0` (D-6 fix), measured the same way on
+Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 98.53% | 93.39% | 97.10% |
+
+All three figures are above the `992bd06` row, which `c11aa6c` matched
+(98.44% / 92.93% / 96.63%), and no file present at `c11aa6c` lost
+coverage. `src/sanitize.js` branches rose from 86.67% to 88.24%, with
+lines and functions still at 100.00%; the rest of the rise is the new
+`test/d6-url-defang-order.test.js`. The test-first commit `fd21ec7`
+measured 98.52% / 93.46% / 97.08%: the new file's failure-reporting
+branches ran only while its tests were failing, which put that file at
+95.11% branches against 94.72% now. `src/tools/write.js` function
+coverage is unchanged at 76.47%.
+
 Child-process coverage. `test/live-smoke-date-account-guard.test.js`
 runs `scripts/live-smoke-date.js` as a child process. When
 `NODE_V8_COVERAGE` is set, Node's `child_process` copies it into a
@@ -1275,8 +1306,8 @@ exact input and output given; **by reading** means established from the
 code only; **review only** means taken from the review and not checked
 again.
 
-**Publication gate.** D-6 through D-12 gate publication; D-8, D-9, D-10,
-D-11 and D-12 are fixed. D-13 through D-22 do not. While D-6 or D-7 is
+**Publication gate.** D-6 through D-12 gate publication; D-6, D-8, D-9,
+D-10, D-11 and D-12 are fixed. D-13 through D-22 do not. While D-7 is
 open, `README.md`'s "Known defects" statement "No open defect affects
 tool output" is false.
 
@@ -1323,60 +1354,9 @@ path.
 
 Fixed in Session 10 by removing the `url` field from tool output; see AD-6. This number is retired, not reused.
 
-### D-6: Defanging can be undone, and three URL forms are never defanged
+### D-6
 
-**Gates publication.** **Reproduced.** Review property 15.
-
-`stripMarkup` defangs `https?://` matches first and removes inline
-Markdown link syntax afterwards, so link removal can join pieces into a
-live URL the defanging pass never saw. Separately, the defanging pattern
-matches only `http` and `https`, only at a word boundary, and only with a
-scheme, so other schemes, a scheme preceded by a letter, and a bare
-`www.` host are left alone.
-
-Reproduction, `stripMarkup` input to output:
-
-| Input | Output |
-|---|---|
-| `ht[tp](x)://evil.example/path` | `http://evil.example/path` |
-| `www.evil.example/path` | `www.evil.example/path` |
-| `[www.evil.example/path](https://www.evil.example/path)` | `www.evil.example/path` |
-| `ftp://evil.example/path` | `ftp://evil.example/path` |
-| `xhttps://evil.example/path` | `xhttps://evil.example/path` |
-
-The first output is a live `http://` URL that the sanitizer itself built.
-The second and third leave a bare `www.` host with unbracketed dots, the
-form `defangUrl`'s own comment calls autolinkable. The review's text gives
-the second input as the bare host; the session prompt that delivered the
-review carried it as the third, link-wrapped form. Both were run. Every
-field that goes through `safeField`, read and write, is affected.
-
-**Claims this makes false:**
-
-- Invariant 4, now **VIOLATED**.
-- `README.md`, "Freestanding URL defanging": "nothing clickable or
-  re-parseable reaches the agent".
-- `README.md`, "Markup stripping": the URL inside a Markdown link "never
-  reaches tool output at all". The first input builds its URL out of link
-  syntax.
-- `src/sanitize.js`, the comment on the defanging pass: it "targets the
-  outcome (no re-parseable or autolinkable URL survives)".
-
-**Fix criteria:**
-
-- The final output of `stripMarkup` contains no `scheme://` sequence for
-  any scheme and no `www.` host with unbracketed dots. The check runs on
-  the output after every pass that can join or reveal text (link removal,
-  markup-character removal, control-character removal, whitespace
-  collapse), not before them.
-- Treated as a bug class: a neutralizing pass that runs before a pass
-  that can join or reveal text. D-15's entity-encoded comment is another
-  instance (comment removal runs before entity decoding). A test must fail
-  on any such ordering anywhere in `stripMarkup`, and all instances are
-  fixed together.
-- Each input above is a test case with an exact expected output written
-  out in the test, not computed with `stripMarkup` or `safeField`, and
-  each fails against `04c46ec`.
+Fixed in Session 17 by decoding entities first, repeating the passes that delete text until stable, and defanging every `scheme://` and bare `www.` host as `stripMarkup`'s last pass; see section 7, R10. Test-first `fd21ec7`, implementation `5d8d7c0`. This number is retired, not reused.
 
 ### D-7: Error results are not stripped, framed, noticed or capped
 
@@ -1414,14 +1394,19 @@ notice, and is 441 characters over the configured cap. The only bound is
 
 AD-4 is not made false: it scopes the notice to successful responses.
 
+**Decided, Session 17.** Error results get the same treatment as success
+results. Todoist's error text is stripped, fenced, capped and carries
+`UNTRUSTED_NOTICE`, rather than being withheld from the result. AD-4 is
+amended to match before implementation, per the fix criteria below.
+
 **Fix criteria:**
 
 - Error text from any source goes through the same stripping and URL
   defanging as untrusted fields, and text that can originate upstream is
   framed.
 - Error results are bounded by `maxOutputChars` plus a fixed envelope.
-- Whether error results carry `UNTRUSTED_NOTICE` is decided and recorded
-  as an amendment to AD-4 before implementation.
+- Error results carry `UNTRUSTED_NOTICE` (decided above), recorded as an
+  amendment to AD-4 before implementation.
 - Redaction stays the last step.
 - A test using the reproduction input above fails against `04c46ec`. It
   asserts no `<b>`, no `https://`, the framed text as a literal expected
@@ -1494,7 +1479,7 @@ reports truncation when it does. An upper bound for each numeric cap is
 decided and recorded under R2, with R2's stderr warning. Tests cover each
 case and fail against `04c46ec`.
 
-### D-15: The sanitizer misses lists, Unicode format characters and the contents of entity-encoded comments
+### D-15: The sanitizer misses lists, Unicode format characters and named entities it does not decode
 
 **Does not gate publication.** Review property 14.
 
@@ -1504,22 +1489,41 @@ case and fail against `04c46ec`.
 |---|---|
 | `1. do this\n- and this` | unchanged |
 | `abc` U+202E `def` | unchanged; the right-to-left override survives |
-| `a &lt;!-- IGNORE PRIOR --&gt; b` | `a !-- IGNORE PRIOR -- b` |
 
-The third output's comment markers are broken, so it cannot render as a
-comment, but its content is now visible text. The first pass removes
-comments before entities are decoded. This is the D-6 bug class.
+The review's third input, the entity-encoded comment
+`a &lt;!-- IGNORE PRIOR --&gt; b`, was an instance of the D-6 bug class
+and was fixed with D-6 in Session 17: entities are now decoded before
+comments are removed, and the output is `a b`.
 
-**Claims this makes false:** `README.md`, "Markup stripping": "HTML tags
-and comments are removed, control characters are stripped". Only ASCII
-control characters are stripped. Unicode format characters (category Cf,
-including bidirectional overrides) are not.
+**Found in Session 17**, reproduced against `5d8d7c0` and already present
+at `c11aa6c`:
+
+| Input | Output |
+|---|---|
+| `http&colon;//evil.example/p` | unchanged |
+| `www&period;evil&period;example` | unchanged |
+
+`decodeHtmlEntities` knows five named entities: `&lt;`, `&gt;`, `&amp;`,
+`&quot;` and `&apos;`. Any other passes through as text, so a consumer
+that decodes HTML named entities, as a CommonMark renderer does, sees
+`http://evil.example/p` and `www.evil.example`. Numeric entities are
+decoded whatever the character, and a numeric entity without its closing
+semicolon is broken by the markup-character pass, which spaces out `#`.
+
+**Claims this makes false:** `README.md`, "Markup stripping": "control
+characters are stripped". Only ASCII control characters are stripped.
+Unicode format characters (category Cf, including bidirectional
+overrides) are not. `README.md`, "Freestanding URL defanging": "nothing
+clickable or re-parseable reaches the agent", for a URL spelled with
+those named entities. Invariant 4 is qualified for them.
 
 **Fix criteria:** Unicode format characters are removed, with the set
 recorded under R10. Whether list markers are neutralized is decided and
 recorded under R10, which lists heading, table and blockquote markup but
-not lists. Comment removal runs after decoding, as part of D-6's class
-fix.
+not lists. Which named entities `stripMarkup` decodes, all of HTML5's or
+at least those that spell URL punctuation (`&colon;`, `&sol;`,
+`&period;`), is decided and recorded under R10; decoding stays before
+every other pass (R10, D-6).
 
 ### D-16: Structural fields are copied without type checks
 
