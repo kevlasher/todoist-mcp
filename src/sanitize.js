@@ -34,8 +34,8 @@ function decodeCodePoint(digits, radix) {
 }
 
 /**
- * Decode HTML entities — numeric (decimal and hex) first, then the common
- * named ones — in a single pass. stripMarkup runs this before any other
+ * Decode HTML entities, numeric (decimal and hex) first and then the five
+ * common named ones, in a single pass. stripMarkup runs this before any other
  * pass, so an entity-encoded comment, tag or URL scheme (e.g.
  * `&lt;!-- x --&gt;`, `&#60;script&#62;`, `http&#58;//`) is removed or
  * defanged exactly like its literal form, rather than surviving as
@@ -92,7 +92,7 @@ function defangUrl(url) {
  * letter-prefixed scheme is matched from its first letter), and any bare
  * `www.` host. This targets the outcome (no re-parseable or autolinkable URL
  * survives) rather than enumerating carrier syntaxes, and applies uniformly
- * to every host — no allowlist, no exemptions. The lookbehind makes each
+ * to every host, with no allowlist and no exemptions. The lookbehind makes each
  * match start where its run of scheme characters starts, which also keeps
  * the scan linear.
  */
