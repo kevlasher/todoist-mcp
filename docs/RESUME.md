@@ -15,16 +15,15 @@ machine.
 
 - Branch: work happens on a short-lived branch per cloud session, merged
   into `main` by pull request. `main` on `origin` is the source of truth.
-- Tests: 154/154 passing, under Node 20 (see section 8).
+- Tests: 181/181 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 15 are complete; section 7 records Session 15.
+- Sessions 1 through 16 are complete; section 7 records Session 16.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
-  D-12, D-11, D-8 and D-9 are done (section 7), D-9 in test-first
-  commit `bbbdd0c` and implementation `24b7e06`. **Next: the small code
-  fix D-10, then the remaining gating defects, D-6 and D-7, before
-  publication.** Each has fix criteria and its reproduction
+  D-12, D-11, D-8, D-9 and D-10 are done (section 7), D-10 in
+  test-first commit `f082acf` and implementation `992bd06`. **Next: the
+  remaining gating defects, D-6 and D-7, before publication.** Each has fix criteria and its reproduction
   input in section 10. D-13 through D-22 do not gate publication.
 - After those, and still before the repository goes public:
   - the free scanning stack on GitHub, with CI running the suite under
@@ -227,6 +226,19 @@ Superseded on 2026-09-24: the independent code review found seven new
 defects that gate publication, D-6 through D-12 (see section 1). The
 paragraph beginning "Section 10 of `docs/SPEC.md` holds D-4" describes
 the state at the end of Session 10.
+
+**D-10: done, Session 16.** Test-first commit `f082acf`, implementation
+`992bd06`. A read tool's `limit` may lower `TODOIST_MAX_ITEMS` but never
+raise it: the effective cap is the smaller of the two, a larger `limit`
+is held to the cap rather than refused, and `truncated` reports a list
+cut short. Recorded under R17. `get-overview`'s 5000 ceiling (R24) is
+untouched. `itemCap` in `src/tools/read.js` bounds all seven
+`getPaginated` call sites in the six tools that take a `limit`.
+`test/d10-limit-bounded.test.js` runs D-10's reproduction input against
+every such tool, found from `tools/list`. Its static check, for any
+caller-supplied value that can raise a configured cap, found the seven
+known sites and no others. D-10 has left section 10. 181 tests pass.
+Next: D-6 and D-7.
 
 **D-9: done, Session 15.** Test-first commit `bbbdd0c`, implementation
 `24b7e06`. Every id a tool places in a request path must be one or more

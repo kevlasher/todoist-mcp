@@ -29,6 +29,7 @@ Maintenance: one row per session, added when the session ends.
 | 13 | D-11 fixed: `scripts/live-smoke-date.js` now calls `verifyContractTestAccount` before any request and loads config with `TODOIST_API_KEY` set to the verified contract token and `TODOIST_API_KEY_FILE` removed, as `scripts/live-smoke.js` does. Test-first `e96d3fe`, implementation `9d4bd71`. `test/live-smoke-date-account-guard.test.js` runs the script with `fetch` stubbed, so no request leaves the machine. Static check `test/live-write-paths-guarded.test.js` added for the bug class across `scripts/` and `test-contract/`; it found no other offender, and removing the guard from `scripts/live-smoke.js` turns it red. `README.md` lists three guarded live paths and its Layout block includes the script. D-21's weaknesses left open. D-11 left section 10. Coverage recorded for `9d4bd71`, with a note on child-process coverage. | Sections 8, 10 |
 | 14 | D-8 fixed: a numeric entity whose code point is zero, a surrogate (0xD800 to 0xDFFF) or above 0x10FFFF now decodes to U+FFFD through `decodeCodePoint` in `src/sanitize.js`, as the HTML standard does for invalid numeric character references; valid entities decode as before. Decision recorded under R10. Test-first `be91ced`, implementation `bf2124d`. `test/d8-invalid-numeric-entity.test.js` covers hex and decimal forms, the surrogate range, zero, 2^53+1, digit runs past Infinity and the 0x10FFFF / 0x110000 boundary, and shows `find-tasks` returning every task when one carries a bad entity. For the bug class it feeds every shaper hostile text in each framed field, and a static check allows `String.fromCodePoint` in `src/` only inside `decodeCodePoint`; a planted raw call in `src/shape.js` turns it red. It found no other string-input throw. Two wrong-type throws it found, an object text field with no usable `toString` and a `null` item, recorded under D-16 and not fixed. D-8 left section 10. Coverage recorded for `bf2124d`. | Sections 7, 8, 10 |
 | 15 | D-9 fixed: every id a tool places in a request path must be one or more ASCII letters or digits, recorded as R30 with its source, Todoist's API v1 reference, checked 2026-09-25. `assertPathId` in `src/client.js` is the single validator. `update-tasks`, `complete-tasks`, `uncomplete-tasks` and `reschedule-tasks` check every id before the first request, so one bad id refuses the whole batch. `request()` also refuses a path that URL parsing would change or that has an empty segment. Test-first `bbbdd0c`, implementation `24b7e06`. `test/d9-path-id.test.js` runs D-9's reproduction inputs and 20 refused forms against each of the four tools. For the bug class, a static check fails on any `request()` or `getPaginated()` path in `src/` that interpolates anything but `assertPathId(...)`; it found the four known sites and no others. The hyphenated ids in two read-tool fixtures were left as they are because they never reach a request path. D-18 updated. D-9 left section 10. Coverage recorded for `24b7e06`. | Sections 6, 7, 8, 10 |
+| 16 | D-10 fixed: a read tool's `limit` may lower `TODOIST_MAX_ITEMS` but never raise it. The effective cap is the smaller of `limit` and `cfg.maxItems`; a larger `limit` is held to the cap, not refused, and `truncated` reports a list cut short. Decision recorded under R17. `get-overview`'s 5000 ceiling (R24) is unaffected. `itemCap` in `src/tools/read.js` is the single bounding helper, used at all seven `getPaginated` call sites in the six tools that take a `limit`, and the shared `limit` schema's description says it cannot raise the cap. Test-first `f082acf`, implementation `992bd06`. `test/d10-limit-bounded.test.js` runs D-10's reproduction input against every read tool with a `limit`, found from `tools/list`, with `find-tasks` once per endpoint and `find-comments` once per scope. For the bug class, any caller-supplied value that can raise a configured cap, a static check requires every cap argument to `getPaginated`, `safeField`, `frameLabels`, `shapeDue` and `capOutput` in `src/` to be a form bounded by configuration, and forbids writing a cap key outside `src/config.js`; it found the seven known call sites and no others. D-10 left section 10. Coverage recorded for `992bd06`. | Sections 7, 8, 10 |
 
 ## 1. Purpose
 
@@ -715,6 +716,37 @@ judgment.
   path is unchanged. Evidence: `test/getpaginated-truncated-flag.test.js`,
   which also pins the cursor path's exact-cap boundary in both directions,
   previously untested. Implementation `cdd670f`, landed with D-1; see R24.
+- **DECIDED, Session 16.** Fix for D-10, formerly in section 10. The
+  configured item cap is `cfg.maxItems`, and a read tool's `limit` may
+  lower it but never raise it: the effective cap is the smaller of
+  `limit` and `cfg.maxItems`, or `cfg.maxItems` when `limit` is omitted.
+  A `limit` above `cfg.maxItems` is not an error. It is held to
+  `cfg.maxItems`, and the existing `truncated` flag reports when the list
+  was cut short. Clamping was chosen over rejecting because a caller
+  asking for more than the cap still gets a correct, bounded answer, and
+  `truncated` already says it is incomplete. `get-overview`'s fixed
+  ceiling for its tasks, today and overdue fetches is a separate
+  decision (R24) and is not affected; the tool takes no `limit`.
+
+  `itemCap(limit, cfg)` in `src/tools/read.js` computes the effective
+  cap, and every `getPaginated` call site in a tool that takes a `limit`
+  passes `itemCap(a.limit, cfg)`. The six tools share one `limit` schema
+  whose description tells the agent it cannot raise the server's cap.
+
+  Evidence: `test/d10-limit-bounded.test.js`. With `maxItems` 5 and a
+  fetch stub that always offers another page, each tool asked with
+  `limit` 500 requests at most 5 items and returns 5 with `truncated:
+  true`; `limit` 3 returns 3; no `limit` returns 5. The tools under test
+  are found from `tools/list`, so a new read tool with a `limit` fails
+  the inventory test until it is covered. Its static check fails if any
+  cap argument to `getPaginated`, `safeField`, `frameLabels`, `shapeDue`
+  or `capOutput` in `src/` is not bounded by configuration
+  (`cfg.maxItems`, `OVERVIEW_MAX_ITEMS`, `itemCap(..., cfg)`,
+  `cfg.maxFieldChars`, `cfg.maxOutputChars`, or `src/shape.js`'s `m`,
+  itself pinned to `cfg.maxFieldChars`), or if any file but
+  `src/config.js` writes a cap key. Test-first commit `f082acf`,
+  implementation `992bd06`. This was D-10 in section 10, found by the
+  2026-09-24 review.
 - R30. Every id placed in a request path must be one or more ASCII
   letters or digits (`^[A-Za-z0-9]+$`), checked by `assertPathId` in
   `src/client.js`, the only validator for path ids. Anything else is
@@ -1052,6 +1084,26 @@ with branches below `32b1560`: lines in the new tests after their first
 failing assertion could not run. `src/tools/write.js` function coverage
 is now **76.47%**.
 
+Session 16, at commit `992bd06` (D-10 fix), measured the same way on
+Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 98.44% | 92.93% | 96.63% |
+
+All three figures are above the `24b7e06` row, which `17b5799` matched
+(96.91% / 92.76% / 95.17%), and no file present at `17b5799` lost
+coverage. `src/tools/read.js` rose from 81.40% / 86.84% / 75.00% to
+96.88% / 88.89% / 100.00%, and `src/shape.js` branches from 84.00% to
+87.50%, because the new tests drive every read tool that takes a
+`limit`. Replacing six `a.limit ?? cfg.maxItems` expressions with one
+helper removed covered branches and at first left `src/tools/read.js`
+at 86.79% branches, below `17b5799`; no branch lost coverage, but the
+drop was fixed by also running `find-comments` scoped by `project_id`,
+which reaches its validation branches. The test-first commit `f082acf`
+measured 98.43% / 92.82% / 96.38%. `src/tools/write.js` function
+coverage is unchanged at 76.47%.
+
 Child-process coverage. `test/live-smoke-date-account-guard.test.js`
 runs `scripts/live-smoke-date.js` as a child process. When
 `NODE_V8_COVERAGE` is set, Node's `child_process` copies it into a
@@ -1223,8 +1275,8 @@ exact input and output given; **by reading** means established from the
 code only; **review only** means taken from the review and not checked
 again.
 
-**Publication gate.** D-6 through D-12 gate publication; D-8, D-9, D-11
-and D-12 are fixed. D-13 through D-22 do not. While D-6, D-7 or D-10 is
+**Publication gate.** D-6 through D-12 gate publication; D-8, D-9, D-10,
+D-11 and D-12 are fixed. D-13 through D-22 do not. While D-6 or D-7 is
 open, `README.md`'s "Known defects" statement "No open defect affects
 tool output" is false.
 
@@ -1383,44 +1435,9 @@ Fixed in Session 14 by decoding an invalid numeric entity to U+FFFD instead of p
 
 Fixed in Session 15 by refusing, before any request, every path id that is not one or more ASCII letters or digits, and by refusing any path that URL parsing would change; see section 7, R30. This number is retired, not reused.
 
-### D-10: A read tool's `limit` is not bounded by `TODOIST_MAX_ITEMS`
+### D-10
 
-**Gates publication.** **Reproduced.** Review property 19.
-
-Six read tools pass `a.limit ?? cfg.maxItems` to `getPaginated`, and the
-schema allows any positive integer, so a caller's `limit` replaces the
-configured cap rather than being bounded by it. `get-overview` takes no
-`limit` and is not affected.
-
-Reproduction: server config `maxItems: 5`; `fetch` stubbed to always
-offer another page; `find-projects` called with `{"limit":500}`. The
-client requested pages of 200, 200 and 100 items, and the payload
-reported `count: 500`. Output text is still bounded by `maxOutputChars`.
-The number of requests and the memory held are not. By reading, a very
-large `limit` pages until the API stops returning a cursor.
-
-**Claims this makes false:**
-
-- R17: "`getPaginated` must respect the configured item cap exactly".
-- `README.md`, "Output-size caps": "pagination is capped
-  (`TODOIST_MAX_ITEMS`, default 200 ...)". And the Configuration table:
-  `TODOIST_MAX_ITEMS` is "Max items fetched across pagination per read
-  call", with `get-overview` as the one exception.
-- R24, the D-1 decision: project, section and label names "keep the cap
-  every other tool uses". The rationale was that raising those caps widens
-  attacker-writable text reaching the agent, and `find-projects`,
-  `find-sections` and `find-labels` let the caller raise them.
-
-**Fix criteria:**
-
-- For every read tool, the number of items fetched is at most
-  `cfg.maxItems`. Whether a larger `limit` is clamped or rejected is
-  decided and recorded under R17.
-- Treated as a bug class: every `getPaginated` call site. A static test
-  fails if any call site passes a cap that is not bounded by
-  `cfg.maxItems` or `OVERVIEW_MAX_ITEMS`.
-- Tests use a `maxItems` that differs from the default (section 8), and
-  each fails against `04c46ec`.
+Fixed in Session 16, test-first `f082acf` and implementation `992bd06`: a read tool's `limit` may lower `TODOIST_MAX_ITEMS` but never raise it; see section 7, R17, `test/d10-limit-bounded.test.js` and its bug-class check. This number is retired, not reused.
 
 ### D-11
 
