@@ -56,12 +56,50 @@ export function assertAllowedUrl(url) {
   return parsed;
 }
 
+/**
+ * The one form an id may take in a request path: one or more ASCII letters
+ * or digits, matching the id formats in Todoist's API v1 reference (see
+ * docs/SPEC.md, R30). Anything else, including "." and "..", slashes and
+ * percent-encoded forms, could move the request to another path.
+ */
+const PATH_ID = /^[A-Za-z0-9]+$/;
+
+/** Thrown for an id refused by assertPathId. */
+export class InvalidIdError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'InvalidIdError';
+  }
+}
+
+/**
+ * The single validator for every id placed in a request path. Returns the id
+ * unchanged, or throws. The message names `label` (the id's position in the
+ * tool arguments) and never echoes the id, which is caller-supplied.
+ */
+export function assertPathId(id, label = 'id') {
+  if (typeof id !== 'string' || !PATH_ID.test(id)) {
+    throw new InvalidIdError(
+      `Refusing request: ${label} must be one or more ASCII letters or digits (A-Z, a-z, 0-9). Nothing was sent.`
+    );
+  }
+  return id;
+}
+
 export function createClient(config) {
   const authHeader = `Bearer ${config.apiKey}`;
 
   /** Low-level request. path is relative to API_BASE; query is an object. */
   async function request(method, path, { query, body } = {}) {
     const url = new URL(API_BASE + path);
+    // A path that URL parsing rewrites ("..", "%2e", "\", spaces) would send
+    // the request somewhere other than the path the caller named. An empty
+    // segment ("//") survives parsing but means an id was empty.
+    if (url.pathname !== new URL(API_BASE).pathname + path || url.pathname.includes('//')) {
+      throw new SsrfError(
+        'Refusing request: the path changes under URL normalization or has an empty segment.'
+      );
+    }
     if (query) {
       for (const [k, v] of Object.entries(query)) {
         if (v === undefined || v === null || v === '') continue;

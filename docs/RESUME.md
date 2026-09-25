@@ -15,16 +15,16 @@ machine.
 
 - Branch: work happens on a short-lived branch per cloud session, merged
   into `main` by pull request. `main` on `origin` is the source of truth.
-- Tests: 140/140 passing, under Node 20 (see section 8).
+- Tests: 154/154 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 14 are complete; section 7 records Session 14.
+- Sessions 1 through 15 are complete; section 7 records Session 15.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
-  D-12, D-11 and D-8 are done (section 7), D-8 in test-first commit
-  `be91ced` and implementation `bf2124d`. **Next: the two small code
-  fixes, D-9 and D-10, then the remaining gating defects, D-6 and
-  D-7, before publication.** Each has fix criteria and its reproduction
+  D-12, D-11, D-8 and D-9 are done (section 7), D-9 in test-first
+  commit `bbbdd0c` and implementation `24b7e06`. **Next: the small code
+  fix D-10, then the remaining gating defects, D-6 and D-7, before
+  publication.** Each has fix criteria and its reproduction
   input in section 10. D-13 through D-22 do not gate publication.
 - After those, and still before the repository goes public:
   - the free scanning stack on GitHub, with CI running the suite under
@@ -227,6 +227,20 @@ Superseded on 2026-09-24: the independent code review found seven new
 defects that gate publication, D-6 through D-12 (see section 1). The
 paragraph beginning "Section 10 of `docs/SPEC.md` holds D-4" describes
 the state at the end of Session 10.
+
+**D-9: done, Session 15.** Test-first commit `bbbdd0c`, implementation
+`24b7e06`. Every id a tool places in a request path must be one or more
+ASCII letters or digits, recorded as R30 with its source, Todoist's API
+v1 reference as checked on 2026-09-25. `assertPathId` in `src/client.js`
+is the only validator. `update-tasks`, `complete-tasks`,
+`uncomplete-tasks` and `reschedule-tasks` check every id before the
+first request, and the refusal names the position without echoing the
+id. `request()` also refuses a path that URL parsing would change or
+that has an empty segment. `test/d9-path-id.test.js` covers D-9's
+reproduction inputs and 20 refused forms per tool; its static check
+found the four known sites and no others. Hyphenated ids in two
+read-tool fixtures stay, since they never reach a path. D-9 has left
+section 10. 154 tests pass. Next: D-10.
 
 **D-8: done, Session 14.** Test-first commit `be91ced`, implementation
 `bf2124d`. A numeric entity whose code point is zero, a surrogate or

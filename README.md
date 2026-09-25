@@ -76,6 +76,8 @@ Read tools are registered in **all** modes. Write tools are registered **only** 
 | `add-sections` | `POST /sections` |
 | `add-labels` | `POST /labels` |
 
+A task id that goes into a request path, in `update-tasks`, `complete-tasks`, `uncomplete-tasks` and `reschedule-tasks`, must be one or more ASCII letters or digits, the formats Todoist's API v1 reference shows. Any other id, such as `..` or `a/b`, is refused with an error before any request is sent, and one bad id refuses the whole batch.
+
 None of the multi-item write tools retry automatically on partial failure, and none of them verify that a write achieved its intended effect beyond a non-error HTTP response — see "What this server does not defend against" below.
 
 ### Never implemented, in any mode
