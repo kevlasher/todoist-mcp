@@ -23,6 +23,7 @@
 import { z } from 'zod';
 import { safeField } from '../sanitize.js';
 import { buildResult } from '../result.js';
+import { assertPathId } from '../client.js';
 
 const priority = z
   .number()
@@ -114,11 +115,16 @@ export function registerWriteTools(server, client, cfg) {
       },
     },
     async (a) => {
+      // Every id is checked before the first request, so one bad id refuses
+      // the whole batch rather than leaving a partial write behind it.
+      a.tasks.forEach((t, i) => assertPathId(t.id, `tasks[${i}].id`));
       const results = [];
-      for (const { id, ...body } of a.tasks) {
-        const updated = await client.request('POST', `/tasks/${encodeURIComponent(id)}`, {
-          body,
-        });
+      for (const [i, { id, ...body }] of a.tasks.entries()) {
+        const updated = await client.request(
+          'POST',
+          `/tasks/${assertPathId(id, `tasks[${i}].id`)}`,
+          { body }
+        );
         results.push({ id, ok: true, content: safeField(updated?.content, cfg.maxFieldChars) });
       }
       return buildResult(cfg, { payload: { updated: results.length, tasks: results } });
@@ -134,8 +140,9 @@ export function registerWriteTools(server, client, cfg) {
       inputSchema: { ids: z.array(z.string().min(1)).min(1) },
     },
     async (a) => {
-      for (const id of a.ids) {
-        await client.request('POST', `/tasks/${encodeURIComponent(id)}/close`);
+      a.ids.forEach((id, i) => assertPathId(id, `ids[${i}]`));
+      for (const [i, id] of a.ids.entries()) {
+        await client.request('POST', `/tasks/${assertPathId(id, `ids[${i}]`)}/close`);
       }
       return buildResult(cfg, { payload: { completed: a.ids.length, ids: a.ids } });
     }
@@ -150,8 +157,9 @@ export function registerWriteTools(server, client, cfg) {
       inputSchema: { ids: z.array(z.string().min(1)).min(1) },
     },
     async (a) => {
-      for (const id of a.ids) {
-        await client.request('POST', `/tasks/${encodeURIComponent(id)}/reopen`);
+      a.ids.forEach((id, i) => assertPathId(id, `ids[${i}]`));
+      for (const [i, id] of a.ids.entries()) {
+        await client.request('POST', `/tasks/${assertPathId(id, `ids[${i}]`)}/reopen`);
       }
       return buildResult(cfg, { payload: { reopened: a.ids.length, ids: a.ids } });
     }
@@ -184,9 +192,12 @@ export function registerWriteTools(server, client, cfg) {
       },
     },
     async (a) => {
+      a.tasks.forEach((t, i) => assertPathId(t.id, `tasks[${i}].id`));
       const results = [];
-      for (const { id, ...due } of a.tasks) {
-        await client.request('POST', `/tasks/${encodeURIComponent(id)}`, { body: due });
+      for (const [i, { id, ...due }] of a.tasks.entries()) {
+        await client.request('POST', `/tasks/${assertPathId(id, `tasks[${i}].id`)}`, {
+          body: due,
+        });
         results.push({ id, ok: true });
       }
       return buildResult(cfg, { payload: { rescheduled: results.length, tasks: results } });
