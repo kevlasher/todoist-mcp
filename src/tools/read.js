@@ -28,6 +28,26 @@ import { buildResult } from '../result.js';
  */
 export const OVERVIEW_MAX_ITEMS = 5000;
 
+/**
+ * A read tool's item cap (D-10, R17): a caller's `limit` may lower
+ * cfg.maxItems but never raise it. A larger limit is held to cfg.maxItems,
+ * not refused, and the `truncated` flag reports a list cut short.
+ */
+function itemCap(limit, cfg) {
+  return limit === undefined ? cfg.maxItems : Math.min(limit, cfg.maxItems);
+}
+
+const limit = z
+  .number()
+  .int()
+  .positive()
+  .optional()
+  .describe(
+    'Maximum items to return. Can lower the server\'s item cap (TODOIST_MAX_ITEMS) ' +
+      'but not raise it; a larger value returns at most the cap, with truncated: true ' +
+      'if more exist.'
+  );
+
 export function registerReadTools(server, client, cfg) {
   const registered = [];
   const add = (name, config, handler) => {
@@ -96,17 +116,16 @@ export function registerReadTools(server, client, cfg) {
             'Specific task ids. A non-empty `query` replaces this filter. The query ' +
               'syntax cannot select by task id, so to filter by these, omit `query`.'
           ),
-        limit: z.number().int().positive().optional(),
+        limit,
       },
     },
     async (a) => {
-      const cap = a.limit ?? cfg.maxItems;
       let items, truncated;
       if (a.query && a.query.trim() !== '') {
         ({ items, truncated } = await client.getPaginated(
           '/tasks/filter',
           { query: a.query, lang: 'en' },
-          cap
+          itemCap(a.limit, cfg)
         ));
       } else {
         ({ items, truncated } = await client.getPaginated(
@@ -118,7 +137,7 @@ export function registerReadTools(server, client, cfg) {
             parent_id: a.parent_id,
             ids: a.ids?.join(','),
           },
-          cap
+          itemCap(a.limit, cfg)
         ));
       }
       return buildResult(cfg, {
@@ -143,7 +162,7 @@ export function registerReadTools(server, client, cfg) {
           .optional(),
         date: z.string().optional().describe('A date, e.g. 2026-07-25 or "next monday".'),
         comparison: z.enum(['on', 'before', 'after']).default('on').optional(),
-        limit: z.number().int().positive().optional(),
+        limit,
       },
     },
     async (a) => {
@@ -170,7 +189,7 @@ export function registerReadTools(server, client, cfg) {
       const { items, truncated } = await client.getPaginated(
         '/tasks/filter',
         { query, lang: 'en' },
-        a.limit ?? cfg.maxItems
+        itemCap(a.limit, cfg)
       );
       return buildResult(cfg, {
         payload: {
@@ -189,13 +208,13 @@ export function registerReadTools(server, client, cfg) {
     {
       title: 'Find projects',
       description: 'List all projects. Implemented via GET /projects.',
-      inputSchema: { limit: z.number().int().positive().optional() },
+      inputSchema: { limit },
     },
     async (a) => {
       const { items, truncated } = await client.getPaginated(
         '/projects',
         {},
-        a.limit ?? cfg.maxItems
+        itemCap(a.limit, cfg)
       );
       return buildResult(cfg, {
         payload: {
@@ -216,14 +235,14 @@ export function registerReadTools(server, client, cfg) {
         'List sections, optionally scoped to a project_id. Implemented via GET /sections.',
       inputSchema: {
         project_id: z.string().optional(),
-        limit: z.number().int().positive().optional(),
+        limit,
       },
     },
     async (a) => {
       const { items, truncated } = await client.getPaginated(
         '/sections',
         { project_id: a.project_id },
-        a.limit ?? cfg.maxItems
+        itemCap(a.limit, cfg)
       );
       return buildResult(cfg, {
         payload: {
@@ -241,13 +260,13 @@ export function registerReadTools(server, client, cfg) {
     {
       title: 'Find labels',
       description: 'List all personal labels. Implemented via GET /labels.',
-      inputSchema: { limit: z.number().int().positive().optional() },
+      inputSchema: { limit },
     },
     async (a) => {
       const { items, truncated } = await client.getPaginated(
         '/labels',
         {},
-        a.limit ?? cfg.maxItems
+        itemCap(a.limit, cfg)
       );
       return buildResult(cfg, {
         payload: { count: items.length, truncated, labels: items.map((l) => shapeLabel(l, cfg)) },
@@ -266,7 +285,7 @@ export function registerReadTools(server, client, cfg) {
       inputSchema: {
         task_id: z.string().optional(),
         project_id: z.string().optional(),
-        limit: z.number().int().positive().optional(),
+        limit,
       },
     },
     async (a) => {
@@ -279,7 +298,7 @@ export function registerReadTools(server, client, cfg) {
       const { items, truncated } = await client.getPaginated(
         '/comments',
         { task_id: a.task_id, project_id: a.project_id },
-        a.limit ?? cfg.maxItems
+        itemCap(a.limit, cfg)
       );
       return buildResult(cfg, {
         payload: {

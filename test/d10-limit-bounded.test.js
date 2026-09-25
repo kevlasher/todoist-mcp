@@ -11,7 +11,7 @@
  * The behavioral tests use D-10's reproduction input: maxItems 5, a fetch
  * stub that always offers another page, and `limit: 500`. They run against
  * every read tool whose tools/list schema has a `limit`, found at run time,
- * and find-tasks once per endpoint. Fixture values avoid the defaults per
+ * find-tasks once per endpoint and find-comments once per scope. Fixture values avoid the defaults per
  * SPEC section 8: maxItems 5 (default 200), maxFieldChars 1500 (2000),
  * maxOutputChars 123457 (50000). The lower limit is 3.
  *
@@ -46,8 +46,8 @@ const serverCfg = {
 
 /**
  * Every read tool that takes a `limit`, with the other arguments it needs
- * and the endpoint and payload key it should use. find-tasks appears twice,
- * once per endpoint.
+ * and the endpoint and payload key it should use. find-tasks appears once
+ * per endpoint, find-comments once per scope (task_id, project_id).
  */
 const CASES = [
   { tool: 'find-tasks', args: {}, path: '/tasks', key: 'tasks' },
@@ -57,6 +57,7 @@ const CASES = [
   { tool: 'find-sections', args: {}, path: '/sections', key: 'sections' },
   { tool: 'find-labels', args: {}, path: '/labels', key: 'labels' },
   { tool: 'find-comments', args: { task_id: 'abc123' }, path: '/comments', key: 'comments' },
+  { tool: 'find-comments', args: { project_id: 'def456' }, path: '/comments', key: 'comments' },
 ];
 
 /**
@@ -289,7 +290,7 @@ function findCapOffenders(file, text) {
   if (file !== 'config.js') {
     // Writing a cap key anywhere but config.js could put a caller's value
     // into cfg: `cfg.maxItems = a.limit`, `{ ...cfg, maxItems: a.limit }`.
-    const write = new RegExp(`(\\.\\s*(${CAP_KEYS})\\s*(=(?!=)|\\+=|\\?\\?=|\\|\\|=))|\\b(${CAP_KEYS})\\s*:`, 'g');
+    const write = new RegExp(`(\\.\\s*(${CAP_KEYS})\\s*(=(?!=)|\\+=|\\?\\?=|\\|\\|=))|(?<![.\\w$])(${CAP_KEYS})\\s*:`, 'g');
     while ((m = write.exec(src)) !== null) {
       offenders.push(`${file}:${lineOf(m.index)} writes a cap key: ${m[0]}`);
     }
@@ -339,6 +340,8 @@ test('bug class: every configured cap in src/ is bounded by configuration, never
     'cfg.maxOutputChars ??= a.limit;': 1,
     'buildResult({ ...cfg, maxOutputChars: a.n }, x)': 1,
     'if (cfg.maxItems === 5) {}': 0,
+    'const n = x === undefined ? cfg.maxItems : Math.min(x, cfg.maxItems);': 0,
+    'f({ maxItems: 3 })': 1,
     'async function getPaginated(path, query = {}, maxItems) {}': 0,
   };
   for (const [src, expected] of Object.entries(planted)) {
