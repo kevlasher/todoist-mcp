@@ -28,6 +28,7 @@ Maintenance: one row per session, added when the session ends.
 | 12 | D-12 fixed in `6a99b01`, tests only. `test/client.test.js`'s token test now registers a 40-character token and asserts it is absent from the error message, proven by removing the error detail's redaction in `src/client.js`. The `find-tasks` regression check now requires success and the fixture task before asserting no `url`, proven by a throwing handler. Static check `test/calltool-asserts-iserror.test.js` added for the bug class; it found three more tests in `test/mcp-e2e.test.js`, each now asserting success first. AD-6 Evidence and Invariant 4's citation updated. D-12 left section 10; D-22 scope noted. Coverage recorded for `6a99b01`. | Sections 4, 5, 8, 10 |
 | 13 | D-11 fixed: `scripts/live-smoke-date.js` now calls `verifyContractTestAccount` before any request and loads config with `TODOIST_API_KEY` set to the verified contract token and `TODOIST_API_KEY_FILE` removed, as `scripts/live-smoke.js` does. Test-first `e96d3fe`, implementation `9d4bd71`. `test/live-smoke-date-account-guard.test.js` runs the script with `fetch` stubbed, so no request leaves the machine. Static check `test/live-write-paths-guarded.test.js` added for the bug class across `scripts/` and `test-contract/`; it found no other offender, and removing the guard from `scripts/live-smoke.js` turns it red. `README.md` lists three guarded live paths and its Layout block includes the script. D-21's weaknesses left open. D-11 left section 10. Coverage recorded for `9d4bd71`, with a note on child-process coverage. | Sections 8, 10 |
 | 14 | D-8 fixed: a numeric entity whose code point is zero, a surrogate (0xD800 to 0xDFFF) or above 0x10FFFF now decodes to U+FFFD through `decodeCodePoint` in `src/sanitize.js`, as the HTML standard does for invalid numeric character references; valid entities decode as before. Decision recorded under R10. Test-first `be91ced`, implementation `bf2124d`. `test/d8-invalid-numeric-entity.test.js` covers hex and decimal forms, the surrogate range, zero, 2^53+1, digit runs past Infinity and the 0x10FFFF / 0x110000 boundary, and shows `find-tasks` returning every task when one carries a bad entity. For the bug class it feeds every shaper hostile text in each framed field, and a static check allows `String.fromCodePoint` in `src/` only inside `decodeCodePoint`; a planted raw call in `src/shape.js` turns it red. It found no other string-input throw. Two wrong-type throws it found, an object text field with no usable `toString` and a `null` item, recorded under D-16 and not fixed. D-8 left section 10. Coverage recorded for `bf2124d`. | Sections 7, 8, 10 |
+| 15 | D-9 fixed: every id a tool places in a request path must be one or more ASCII letters or digits, recorded as R30 with its source, Todoist's API v1 reference, checked 2026-09-25. `assertPathId` in `src/client.js` is the single validator. `update-tasks`, `complete-tasks`, `uncomplete-tasks` and `reschedule-tasks` check every id before the first request, so one bad id refuses the whole batch. `request()` also refuses a path that URL parsing would change or that has an empty segment. Test-first `bbbdd0c`, implementation `24b7e06`. `test/d9-path-id.test.js` runs D-9's reproduction inputs and 20 refused forms against each of the four tools. For the bug class, a static check fails on any `request()` or `getPaginated()` path in `src/` that interpolates anything but `assertPathId(...)`; it found the four known sites and no others. The hyphenated ids in two read-tool fixtures were left as they are because they never reach a request path. D-18 updated. D-9 left section 10. Coverage recorded for `24b7e06`. | Sections 6, 7, 8, 10 |
 
 ## 1. Purpose
 
@@ -569,6 +570,14 @@ v1 API accepts a caller-supplied id, so nobody who can write task content
 can put chosen bytes in this field. Raw passthrough on both paths:
 `shapeTask` emits `id` unchanged, and so do the other shapers.
 
+Every id a tool places in a request path must be one or more ASCII
+letters or digits (R30). That covers the `id` of `update-tasks` and
+`reschedule-tasks` and the `ids[]` of `complete-tasks` and
+`uncomplete-tasks`. Any other id is refused before any request, and one
+bad id refuses the whole batch. Ids the read tools send as query
+parameters, and ids the write tools send in a request body, are not in a
+path and are not restricted by R30 (D-18).
+
 No tool's output carries a `url` field. `shapeTask`, `shapeProject` and
 the `add-tasks` echo once passed one through raw. All three are removed,
 and anything Todoist returns under that name is dropped at this server.
@@ -706,6 +715,33 @@ judgment.
   path is unchanged. Evidence: `test/getpaginated-truncated-flag.test.js`,
   which also pins the cursor path's exact-cap boundary in both directions,
   previously untested. Implementation `cdd670f`, landed with D-1; see R24.
+- R30. Every id placed in a request path must be one or more ASCII
+  letters or digits (`^[A-Za-z0-9]+$`), checked by `assertPathId` in
+  `src/client.js`, the only validator for path ids. Anything else is
+  refused before any request is sent, including the empty string, `.`,
+  `..`, slashes, backslashes, percent-encoded forms such as `%2e%2e`,
+  whitespace, `?`, `#`, hyphens, underscores and non-ASCII digits. The
+  refusal names the id's position (`tasks[0].id`, `ids[1]`) and does not
+  echo the id. A tool that takes a batch checks every id before its first
+  request. Independently, `request()` refuses a composed URL whose
+  pathname differs from the path it was given, or that contains an empty
+  segment.
+- **DECIDED, Session 15.** Source of the pattern: Todoist's API v1
+  reference, `developer.todoist.com/api/v1`, checked by the maintainer
+  on 2026-09-25. Every example id in it is ASCII letters and digits, for
+  example `6Jf8VQXxpwv56VQ7` and `6X7gfV9G7rWm5hW8`, with older numeric
+  ids such as `2203306141` also shown. The only hyphenated ids there are
+  `temp_id` values for the `/sync` command endpoint, which this server
+  does not call. The check was not repeated in the session, because the
+  docs site renders client-side (section 9). No live id has been
+  recorded here: section 9's observation lists field names only. If
+  Todoist issues an id outside this pattern, the four tools refuse it
+  with a clear error rather than sending a wrong request, and this rule
+  is revisited. Hyphenated ids in two test fixtures
+  (`test/d8-invalid-numeric-entity.test.js`,
+  `test/get-overview-truncation.test.js`) are invented values in stubbed
+  read-tool responses; they never reach a request path and stay as they
+  are. Evidence: `test/d9-path-id.test.js`.
 
 ### Server lifecycle
 - R18. Read tools must register in every mode; write tools must register
@@ -998,6 +1034,24 @@ every framed field. The test-first commit `be91ced` measured 96.23% /
 while the tests were failing, and the implementation stopped them
 running. `src/tools/write.js` function coverage is unchanged at 38.46%.
 
+Session 15, at commit `24b7e06` (D-9 fix), measured the same way on
+Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 96.91% | 92.76% | 95.17% |
+
+All three figures are above the `bf2124d` row, which `32b1560` matched
+(96.20% / 92.19% / 94.15%), and no file present at `32b1560` lost
+coverage. `src/client.js` rose from 96.47% / 86.96% to 97.12% / 89.47%
+lines and branches, and `src/tools/write.js` from 84.11% / 87.50% /
+38.46% to 89.76% / 92.31% / 76.47%, because the new tests drive
+`complete-tasks`, `uncomplete-tasks` and `reschedule-tasks` for the first
+time. The test-first commit `bbbdd0c` measured 96.40% / 91.95% / 94.28%,
+with branches below `32b1560`: lines in the new tests after their first
+failing assertion could not run. `src/tools/write.js` function coverage
+is now **76.47%**.
+
 Child-process coverage. `test/live-smoke-date-account-guard.test.js`
 runs `scripts/live-smoke-date.js` as a child process. When
 `NODE_V8_COVERAGE` is set, Node's `child_process` copies it into a
@@ -1169,8 +1223,8 @@ exact input and output given; **by reading** means established from the
 code only; **review only** means taken from the review and not checked
 again.
 
-**Publication gate.** D-6 through D-12 gate publication; D-8, D-11 and
-D-12 are fixed. D-13 through D-22 do not. While D-6, D-7 or D-10 is
+**Publication gate.** D-6 through D-12 gate publication; D-8, D-9, D-11
+and D-12 are fixed. D-13 through D-22 do not. While D-6, D-7 or D-10 is
 open, `README.md`'s "Known defects" statement "No open defect affects
 tool output" is false.
 
@@ -1325,51 +1379,9 @@ AD-4 is not made false: it scopes the notice to successful responses.
 
 Fixed in Session 14 by decoding an invalid numeric entity to U+FFFD instead of passing it to `String.fromCodePoint`; see section 7, R10. This number is retired, not reused.
 
-### D-9: Dot-segment task ids leave the task resource path
+### D-9
 
-**Gates publication.** **Reproduced.** Review property 8.
-
-`encodeURIComponent` leaves `.` unchanged, so an id of `.` or `..` becomes
-a path dot segment that `new URL()` normalizes away. The host stays
-`api.todoist.com`, so Invariants 5 and 11 are unaffected. The path is not.
-The id comes from the MCP caller, which under section 2 may be acting on
-injected content.
-
-Reproduction, with `fetch` stubbed to return HTTP 200 and record each
-request:
-
-| Tool and arguments | Request sent |
-|---|---|
-| `update-tasks` `{"tasks":[{"id":"..","priority":4}]}` | `POST https://api.todoist.com/api/v1/` |
-| `update-tasks` `{"tasks":[{"id":".","content":"hi"}]}` | `POST /api/v1/tasks/` with the body |
-| `complete-tasks` `{"ids":[".."]}` | `POST /api/v1/close` |
-| `uncomplete-tasks` `{"ids":["."]}` | `POST /api/v1/tasks/reopen` |
-| `reschedule-tasks` `{"tasks":[{"id":"..","due_string":"tomorrow"}]}` | `POST /api/v1/` |
-
-All five report success against the stub. What Todoist does with these
-requests is not established; no live request was made. The second row
-matters most: a caller-supplied body posted to the task collection path
-has the shape of task creation.
-
-**Claims this makes false:**
-
-- Section 6 and `README.md`'s write-tool table: `update-tasks` and
-  `reschedule-tasks` map to `POST /tasks/{id}`, `complete-tasks` to
-  `POST /tasks/{id}/close`, `uncomplete-tasks` to
-  `POST /tasks/{id}/reopen`. None of these holds for these ids.
-
-**Fix criteria:**
-
-- Every id put into a request path is validated before the request by a
-  single validator. It rejects empty ids, `.`, `..` and anything outside
-  an id pattern recorded in this spec together with its source.
-- Treated as a bug class: any caller-controlled value in a request path.
-  `request()` also refuses a composed URL whose normalized path differs
-  from the path it was given. A static test fails if any path passed to
-  `request()` interpolates a value that has not gone through the
-  validator.
-- A test with `.` and `..` for each of the four tools fails against
-  `04c46ec`.
+Fixed in Session 15 by refusing, before any request, every path id that is not one or more ASCII letters or digits, and by refusing any path that URL parsing would change; see section 7, R30. This number is retired, not reused.
 
 ### D-10: A read tool's `limit` is not bounded by `TODOIST_MAX_ITEMS`
 
@@ -1564,7 +1576,9 @@ value. `createClient` registers its token. Tests cover each.
 
 By reading:
 
-- Ids and dates are unrestricted strings. Their path consequence is D-9.
+- Ids and dates are unrestricted strings, except ids placed in a request
+  path, which R30 restricts (D-9, fixed in Session 15). Ids sent as query
+  parameters or in a request body are still unrestricted.
   `find-tasks-by-date` puts `date` verbatim into the filter query and
   returns that query as `filter`. Section 6 describes `filter` as
   "server-built ... not echoed". It is echoed, and its content is partly
@@ -1585,7 +1599,10 @@ By reading:
 **Fix criteria:** every batch tool validates all items before its first
 write. Batch size and string lengths have recorded maximums.
 `reschedule-tasks` takes exactly one due field. Empty-string ids are
-rejected, using D-9's validator.
+rejected, using D-9's validator, `assertPathId`. `update-tasks`,
+`complete-tasks`, `uncomplete-tasks` and `reschedule-tasks` already check
+every path id before their first request (R30); their other fields do
+not have that check yet.
 
 ### D-19: Registration and client boundaries are wider than their comments say
 
