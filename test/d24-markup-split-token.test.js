@@ -281,7 +281,8 @@ function argsAt(src, open) {
  *     from stripMarkup(redact(...)) and afterwards only from itself;
  *   - a capOutput call outside buildResult, or not a whole operand there;
  *   - a stripMarkup or safeField call whose argument contains a call to
- *     the cut helper or to capOutput.
+ *     the cut helper or to capOutput, or the variable holding capOutput's
+ *     result.
  */
 function findOffenders(file, text) {
   const src = stripComments(text);
@@ -325,6 +326,7 @@ function findOffenders(file, text) {
     }
   }
 
+  const capped = [];
   for (const c of src.matchAll(callRe('capOutput'))) {
     if (isDeclaration(c.index)) continue;
     const fn = enclosingFunction(src, c.index);
@@ -333,6 +335,10 @@ function findOffenders(file, text) {
       out.push(`${file}:${lineOf(c.index)} capOutput( called outside ${CAP_CALLER.name}`);
     } else if (!/[=?:]$/.test(before)) {
       out.push(`${file}:${lineOf(c.index)} capOutput( is not a whole operand, so its output may be stripped`);
+    } else {
+      // The variable its result is stored in, if any, must not be stripped.
+      const assigned = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;]*$/.exec(before);
+      if (assigned) capped.push(assigned[1]);
     }
   }
 
@@ -340,7 +346,8 @@ function findOffenders(file, text) {
     for (const c of src.matchAll(callRe(name))) {
       if (isDeclaration(c.index)) continue;
       const arg = argsAt(src, c.index + c[0].length - 1);
-      if (new RegExp(`\\b(?:${CUT_HELPER}|capOutput)\\s*\\(`).test(arg)) {
+      const cappedVar = capped.some((v) => new RegExp(`(?<![\\w$.])${v}(?![\\w$])`).test(arg));
+      if (cappedVar || new RegExp(`\\b(?:${CUT_HELPER}|capOutput)\\s*\\(`).test(arg)) {
         out.push(`${file}:${lineOf(c.index)} ${name}( takes text that was already cut`);
       }
     }
@@ -397,6 +404,13 @@ test('D-24 class: the static check flags planted offenders and passes sound form
     ['result.js', 'export function buildResult(cfg) {\n  const body = x ? capOutput(a, 1) : capOutput(b, 2);\n}', 0],
     ['result.js', 'export function buildResult(cfg) {\n  const body = safeField(capOutput(a, 1));\n}', 2],
     ['result.js', 'export function buildResult(cfg) {\n  return stripMarkup(capOutput(a, 1));\n}', 2],
+    // capOutput's result stripped through the variable holding it.
+    [
+      'result.js',
+      'export function buildResult(cfg) {\n  const body = x ? capOutput(a, 1) : capOutput(b, 2);\n  return redact(`${n}${safeField(body, 9)}`);\n}',
+      1,
+    ],
+    ['result.js', 'export function buildResult(cfg) {\n  const body = capOutput(a, 1);\n  return redact(`${n}${body}`);\n}', 0],
     ['shape.js', 'function f(a) {\n  return capOutput(a, 1);\n}', 1],
     ['shape.js', 'function f(a) {\n  return safeField(redactThenCut(a, 5).text, 9);\n}', 2],
     ['redact.js', `export function ${CUT_HELPER}(input, cap) {\n  const t = redact(input);\n  return t.slice(0, cap);\n}`, 0],
