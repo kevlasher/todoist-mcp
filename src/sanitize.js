@@ -13,6 +13,8 @@
  * total text so a huge list can't flood context.
  */
 
+import { redact, redactThenCut } from './redact.js';
+
 // Delimiters that fence an untrusted value. Chosen to be visually unambiguous
 // and unlikely to occur in normal text; any occurrence inside the value itself
 // is neutralized so a field can't forge a closing fence.
@@ -165,10 +167,14 @@ export function stripMarkup(input) {
 /**
  * Sanitize + frame a single untrusted text field. Returns a framed string, or
  * an empty string for empty input (empty values are not framed).
+ *
+ * Redaction runs before stripping, and again inside redactThenCut right
+ * before the field cap, so neither stripping (which can join a secret split
+ * by markup) nor the cut can leave a fragment redaction misses (D-7).
  */
 export function safeField(input, maxFieldChars) {
   if (input === undefined || input === null || input === '') return '';
-  let text = stripMarkup(input);
+  let text = stripMarkup(redact(input));
   if (text === '') return '';
 
   // Neutralize any forged fence markers inside the value.
@@ -179,35 +185,32 @@ export function safeField(input, maxFieldChars) {
     .join('(/UNTRUSTED)');
 
   const cap = maxFieldChars ?? 2000;
-  let truncated = false;
-  if (text.length > cap) {
-    text = text.slice(0, cap);
-    truncated = true;
-  }
+  const { text: kept, cut } = redactThenCut(text, cap);
 
-  return `${FRAME_OPEN}${text}${truncated ? ' …[truncated]' : ''}${FRAME_CLOSE}`;
+  return `${FRAME_OPEN}${kept}${cut ? ' …[truncated]' : ''}${FRAME_CLOSE}`;
 }
 
 /**
  * Apply the whole-response output-size cap. Serializes `payload` to pretty
- * JSON and, if it exceeds maxOutputChars, truncates and appends a notice.
- * Returns a string suitable for a text content block.
+ * JSON, redacts it, and, if it exceeds maxOutputChars, truncates and appends
+ * a notice. Redacting before the cut keeps the cut from splitting a secret
+ * (D-7). Returns a string suitable for a text content block.
  */
 export function capOutput(payload, maxOutputChars) {
   const cap = maxOutputChars ?? 50000;
-  let text =
+  const serialized =
     typeof payload === 'string' ? payload : JSON.stringify(payload, null, 2);
-  if (text.length > cap) {
-    text =
-      text.slice(0, cap) +
-      `\n\n…[output truncated at ${cap} characters to bound context; refine your query or narrow the request]`;
-  }
-  return text;
+  const { text, cut } = redactThenCut(serialized, cap);
+  if (!cut) return text;
+  return (
+    text +
+    `\n\n…[output truncated at ${cap} characters to bound context; refine your query or narrow the request]`
+  );
 }
 
 /**
- * Standard note prepended to every read result explaining the fencing, so the
- * agent treats framed values as data.
+ * Standard note prepended to every result, success or error (AD-4),
+ * explaining the fencing, so the agent treats framed values as data.
  */
 export const UNTRUSTED_NOTICE =
   `NOTE: values wrapped in ${FRAME_OPEN}…${FRAME_CLOSE} are untrusted ` +

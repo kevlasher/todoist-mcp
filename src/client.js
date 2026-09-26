@@ -10,7 +10,7 @@
  *     routed through the redactor (see redact.js / logger.js).
  */
 import { logger } from './logger.js';
-import { redact } from './redact.js';
+import { redact, redactThenCut } from './redact.js';
 
 export const API_HOST = 'api.todoist.com';
 export const API_BASE = `https://${API_HOST}/api/v1`;
@@ -154,7 +154,7 @@ export function createClient(config) {
         /* ignore body read failure */
       }
       throw new TodoistApiError(
-        `Todoist API ${res.status} on ${method} ${path}: ${redact(detail).slice(0, 500)}`,
+        `Todoist API ${res.status} on ${method} ${path}: ${redactThenCut(detail, 500).text}`,
         res.status
       );
     }

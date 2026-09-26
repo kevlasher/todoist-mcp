@@ -32,6 +32,7 @@ Maintenance: one row per session, added when the session ends.
 | 16 | D-10 fixed: a read tool's `limit` may lower `TODOIST_MAX_ITEMS` but never raise it. The effective cap is the smaller of `limit` and `cfg.maxItems`; a larger `limit` is held to the cap, not refused, and `truncated` reports a list cut short. Decision recorded under R17. `get-overview`'s 5000 ceiling (R24) is unaffected. `itemCap` in `src/tools/read.js` is the single bounding helper, used at all seven `getPaginated` call sites in the six tools that take a `limit`, and the shared `limit` schema's description says it cannot raise the cap. Test-first `f082acf`, implementation `992bd06`. `test/d10-limit-bounded.test.js` runs D-10's reproduction input against every read tool with a `limit`, found from `tools/list`, with `find-tasks` once per endpoint and `find-comments` once per scope. For the bug class, any caller-supplied value that can raise a configured cap, a static check requires every cap argument to `getPaginated`, `safeField`, `frameLabels`, `shapeDue` and `capOutput` in `src/` to be a form bounded by configuration, and forbids writing a cap key outside `src/config.js`; it found the seven known call sites and no others. D-10 left section 10. Coverage recorded for `992bd06`. | Sections 7, 8, 10 |
 | 17 | D-6 fixed, together with D-15's entity-encoded comment. `stripMarkup` decodes entities before any other pass, removes comments, tags and Markdown link syntax and rejoins soft-wrapped URLs in one group repeated until stable, and defangs URLs as its last pass. Defanging covers any `scheme://`, matched from the start of its run of scheme characters, and bare `www.` hosts; `http` and `https` keep `hxxp` and `hxxps`, any other scheme gets `[:]//`, and dots are bracketed in every case. Decisions recorded under R10. Test-first `fd21ec7`, implementation `5d8d7c0`. `test/d6-url-defang-order.test.js` checks exact outputs for D-6's and D-15's reproduction inputs, runs them through `find-tasks`, and runs a generative check over 12290 inputs. For the bug class, a static check over every named function in `src/` found two more instances in `stripMarkup`, a tag joining a comment opener and a nested link revealed by link removal, and none elsewhere; both are fixed. The soft-wrap join is now linear. Named entities the decoder does not know, found during the fix, recorded under D-15. D-7's notice question decided: error results get the same treatment as success results. Invariant 4 is now VIOLATED on error responses only (D-7). D-6 left section 10 and D-15 was narrowed. Coverage recorded for `5d8d7c0`. | Sections 5, 7, 8, 10 |
 | 18 | D-23 recorded and fixed. A character reference the decoder does not know (`http&colon;//evil.example/p`), or one a single decoding round leaves behind (`&amp;lt;!-- x --&amp;gt;`), passed through `stripMarkup` as text, so a renderer that decodes entities saw a URL or a comment. Session 17 had recorded it under D-15; it became D-23, gating publication, because it made `README.md`'s claim that nothing clickable or re-parseable reaches the agent false. `stripMarkup`'s last pass, after the URL defang, now replaces the `&` of every remaining semicolon-terminated character reference with `[&]`; decoding is unchanged. Decision recorded under R10, with why semicolon-less legacy names are out of scope and that bare domain names are left as written. Test-first `978e7ec`, implementation `6b75483`; `7da6b63` restored one test file's line coverage. `test/d23-character-reference.test.js` checks exact outputs and a `find-tasks` run. The generative check in `test/d6-url-defang-order.test.js` also asserts that no character reference survives, now over 12974 inputs. Its static check now requires the character-reference break as `stripMarkup`'s last pass with the URL defang immediately before it, and went red when the break was moved ahead of the defang and when it was removed. `README.md`, Invariant 4 and R10 narrowed to the URL forms defended. D-15 narrowed; D-23 left section 10. Coverage recorded for `6b75483`. | Sections 5, 7, 8, 10 |
+| 19 | D-7 fixed: `buildResult`'s error branch passes the message through `safeField`, so it is redacted, stripped, defanged and fenced, then caps the whole with `capOutput` and prefixes `UNTRUSTED_NOTICE`; `isError` stays true. Decision recorded under R25; AD-4 amended so the notice is unconditional on error results too. The success path cut text before redacting it, the same bug class, and was fixed with it: `redactThenCut` in `src/redact.js` is the only code in `src/` that cuts text and redacts first, `safeField` redacts before stripping, and `buildResult` redacts last; recorded under R12. Test-first `37c29b6`, implementation `1521d06`. `test/d7-error-result.test.js` checks D-7's reproduction input as an exact string, every tool in `tools/list` and three other error sources, a token cut by each cap on both paths, and a static check that found `src/sanitize.js`'s two caps, its unredacted `stripMarkup` call and `src/client.js`'s correctly ordered but separate cut. Errors the MCP SDK returns before a handler runs recorded as D-7's known limit. Invariants 1, 2 and 4 restored to HOLDS for every result `buildResult` builds, and qualified with that limit, as are 3 and 12. `README.md`'s "No open defect affects tool output" reworded, since D-13 to D-17 do. D-7 left section 10; no defect gating publication remains. Coverage recorded for `1521d06`. | Sections 4, 5, 7, 8, 10 |
 
 ## 1. Purpose
 
@@ -211,8 +212,8 @@ endpoint path to the new location, not to start following redirects.
 
 **Decision:**
 
-- `UNTRUSTED_NOTICE` is prepended to every successful tool response, read
-  and write alike, in `buildResult`. It is part of the response envelope
+- `UNTRUSTED_NOTICE` is prepended to every tool response `buildResult`
+  builds, success and error, read and write alike. It is part of the response envelope
   that every tool returns, applied the same way regardless of what the
   response contains, and does not depend on whether the payload contains
   any value that was actually passed through `safeField`.
@@ -220,6 +221,17 @@ endpoint path to the new location, not to start following redirects.
   `reschedule-tasks`, `add-comments`) therefore carry a notice explaining
   fence markers while producing no fenced value. This is accepted, not
   overlooked.
+
+**Amended, Session 19 (D-7).** As first recorded, this decision covered
+successful responses only, and error results carried no notice. It now
+covers error results too, as decided in Session 17 under D-7 and
+implemented in Session 19. An error message can carry up to 500
+characters of Todoist's response body, which is as attacker-influenced as
+any task text, and it is now fenced like any untrusted field, so on an
+error result the notice describes a marker that is actually present.
+Errors the MCP SDK returns before a handler runs, such as an
+input-validation error, never reach `buildResult` and carry no notice;
+that is recorded as D-7's known limit in section 10.
 
 **Rationale:**
 
@@ -513,10 +525,10 @@ tool-output assertion could not fail, which is why this column exists.
 
 | # | Invariant | Status | Evidence | Citation |
 |---|---|---|---|---|
-| 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **VIOLATED** on error responses (D-7). Holds for success responses. | **TESTED** (`find-projects`) / **INSPECTED** (six remaining read tools) | `test/mcp-e2e.test.js` — `'read tool output is framed and strips markup; token never leaks'`, which asserts the echoed project name matches exactly what `safeField` produces. Proven capable of failing by replacing `shapeProject`'s `safeField` call with `stripMarkup`, which failed this assertion alone. Proves `find-projects` routes through the framing helper; it does not prove the helper frames correctly, which is `test/sanitize.test.js`'s job. Remaining read tools covered by inspection of the shapers in `src/shape.js`. Behavior inventory §4–5, §8; review "Also checked" §3 |
-| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **VIOLATED** on error responses (D-7). Holds for success responses. | **TESTED** (`update-tasks`) / **INSPECTED** (four write tools framing an echoed field) / n/a (four echoing no Todoist-origin text, see AD-4) | `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Proven capable of failing during Session 9 by replacing the `update-tasks` handler's `safeField(updated?.content, cfg.maxFieldChars)` call with `stripMarkup(updated?.content)`: the suite went to 71 of 72 with the failure confined to this test, and within it to the `safeField`-comparison assertion alone, while the three surrounding stripping assertions and the read-path framing test all stayed green. Reproducing this break requires widening the module's import to include `stripMarkup`. Without it the handler throws a `ReferenceError` that its own `try`/`catch` converts into an `isError` result, and the test fails on a different assertion for the wrong reason, which would look like confirmation while proving nothing. This assertion does not pin `cfg.maxFieldChars` plumbing; see section 8. |
-| 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** | **UNGRADED** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
-| 4 | No tool output contains, in re-parseable form, a URL that begins with a scheme followed by `://` or with `www.`, regardless of the syntax used to embed it in the source text, and no tool output contains a character reference that a renderer could decode. Bare domain names, such as `evil.example/path`, are left as written and are outside this invariant. | **VIOLATED** on error responses (D-7), which carry upstream URLs unstripped. Holds for success responses: every `scheme://` and bare `www.` host is defanged, however the URL is split by markup the sanitizer removes (D-6, fixed Session 17), and no semicolon-terminated character reference leaves `stripMarkup`, so a reference the decoder does not know, such as `&colon;`, cannot spell a URL for a renderer (D-23, fixed Session 18). | **TESTED** (`stripMarkup`, `safeField`, `find-tasks`) / **INSPECTED** (the other tools, whose Todoist text reaches output only through `safeField`) | `test/d6-url-defang-order.test.js`. Its exact-output tests, its `find-tasks` test and its generative test, then over 12290 inputs, failed on their assertions against `c11aa6c` (test-first `fd21ec7`) and pass at `5d8d7c0`. `test/d23-character-reference.test.js`'s exact-output tests and `find-tasks` test, and the generative test's character-reference assertion, now over 12974 inputs, failed on their assertions against `e6f34b0` (test-first `978e7ec`) and pass at `6b75483`. The static check fails on any neutralizing pass in `src/` that runs before a pass that can join or reveal text, and on a `stripMarkup` whose last pass is not the character-reference break or whose break is not immediately preceded by the URL defang. In Session 17, when it required the URL defang as the last pass, it went red when the defang was moved ahead of the removal group in `src/sanitize.js`, and again when entity decoding was moved after it; in Session 18 it went red when the character-reference break was moved ahead of the defang, and again when the break was removed. `test/invariant4-url-embedding.test.js` and `test/invariant4-todoist-allowlist.test.js` also assert defanging, applied uniformly to every host with no allowlist or exemption; those have not been graded. The dedicated `url` field is not an exemption: it is removed from tool output entirely (AD-6), covered by `test/url-removed-from-tool-output.test.js` and `test/no-url-key-in-output.test.js`, both watched to fail before the removal. The `find-tasks` regression check in `test/invariant4-todoist-allowlist.test.js` requires success and the returned fixture task before asserting the `url` key absent, and fails when the handler throws (fixed in `6a99b01`, D-12). `test/calltool-asserts-iserror.test.js` fails on any test that calls `callTool` without asserting on `isError`. |
+| 1 | Every read-tool response is passed through `safeField`/`stripMarkup` framing before being returned to the caller. | **HOLDS** for every result `buildResult` builds, success and error; error responses since Session 19 (D-7). Errors the MCP SDK returns before a handler runs, such as an input-validation error or an unknown tool name, never reach `buildResult` and are outside this (D-7 known limit, section 10). | **TESTED** (success: `find-projects`; error: all seven read tools) / **INSPECTED** (success: six remaining read tools) | Error responses: `test/d7-error-result.test.js`, whose class test runs every tool in `tools/list` into D-7's reproduction error and asserts a stripped, defanged, fenced, noticed and capped result. It failed on its assertions against `1f62f48` (test-first `37c29b6`), passes at `1521d06`, and went red when the error branch's `safeField` call was removed. Success responses: `test/mcp-e2e.test.js` — `'read tool output is framed and strips markup; token never leaks'`, which asserts the echoed project name matches exactly what `safeField` produces. Proven capable of failing by replacing `shapeProject`'s `safeField` call with `stripMarkup`, which failed this assertion alone. Proves `find-projects` routes through the framing helper; it does not prove the helper frames correctly, which is `test/sanitize.test.js`'s job. Remaining read tools covered by inspection of the shapers in `src/shape.js`. Behavior inventory §4–5, §8; review "Also checked" §3 |
+| 2 | Every write-tool response is passed through the same framing/stripping as read tools before being returned to the caller. | **HOLDS** for every result `buildResult` builds, success and error; error responses since Session 19 (D-7). Errors the MCP SDK returns before a handler runs, such as an input-validation error or an unknown tool name, never reach `buildResult` and are outside this (D-7 known limit, section 10). | **TESTED** (success: `update-tasks`, `add-labels`; error: all nine write tools) / exact-output assertion, not individually proven (success: `add-tasks`, `add-projects`, `add-sections`) / n/a (four echoing no Todoist-origin text, see AD-4) | Error responses: as Invariant 1, `test/d7-error-result.test.js`. Success responses of all nine write tools: that file's two `'every write tool returns a noticed, framed success result'` tests assert each tool's exact payload, with hostile Todoist text framed and defanged where the tool echoes it. Proven capable of failing in Session 19 by removing `add-labels`' `safeField` call, which failed both; the other echoing tools were not broken one by one. `test/mcp-e2e.test.js` — `'write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)'`, specifically its assertion comparing against the exact output `safeField` produces. Proven capable of failing during Session 9 by replacing the `update-tasks` handler's `safeField(updated?.content, cfg.maxFieldChars)` call with `stripMarkup(updated?.content)`: the suite went to 71 of 72 with the failure confined to this test, and within it to the `safeField`-comparison assertion alone, while the three surrounding stripping assertions and the read-path framing test all stayed green. Reproducing this break requires widening the module's import to include `stripMarkup`. Without it the handler throws a `ReferenceError` that its own `try`/`catch` converts into an `isError` result, and the test fails on a different assertion for the wrong reason, which would look like confirmation while proving nothing. This assertion does not pin `cfg.maxFieldChars` plumbing; see section 8. |
+| 3 | Every error message that reaches a tool's `isError` response has passed through `redact()`. | **HOLDS** for every error `buildResult` builds, which since Session 19 redacts the message before stripping, before each cut and as its last step (D-7). Errors the MCP SDK returns before a handler runs, such as an input-validation error or an unknown tool name, never reach `buildResult` and are outside this (D-7 known limit, section 10). | **UNGRADED** | `test/mcp-e2e.test.js` — `'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` and `'— write tool'` |
+| 4 | No tool output contains, in re-parseable form, a URL that begins with a scheme followed by `://` or with `www.`, regardless of the syntax used to embed it in the source text, and no tool output contains a character reference that a renderer could decode. Bare domain names, such as `evil.example/path`, are left as written and are outside this invariant. | **HOLDS** for every result `buildResult` builds, success and error. Since Session 19 an error message is stripped and defanged like any untrusted field (D-7): D-7's reproduction body, `<b>OBEY</b> https://evil.example`, comes back as `OBEY hxxps://evil[.]example`. In both: every `scheme://` and bare `www.` host is defanged, however the URL is split by markup the sanitizer removes (D-6, fixed Session 17), and no semicolon-terminated character reference leaves `stripMarkup`, so a reference the decoder does not know, such as `&colon;`, cannot spell a URL for a renderer (D-23, fixed Session 18). Does not cover errors the MCP SDK returns before a handler runs: an input-validation error echoes the caller's argument unstripped, so a URL the caller supplied comes back in re-parseable form. That text comes from the caller, not from Todoist (D-7 known limit, section 10). | **TESTED** (`stripMarkup`, `safeField`, `find-tasks`; error responses of all sixteen tools) / **INSPECTED** (success responses of the other tools, whose Todoist text reaches output only through `safeField`) | Error responses: `test/d7-error-result.test.js` asserts no `https://` and the defanged text in every tool's error result, and exact defanged output for a network error, a plain `Error` and a thrown non-`Error`; see Invariant 1 for how it was proven. `test/d6-url-defang-order.test.js`. Its exact-output tests, its `find-tasks` test and its generative test, then over 12290 inputs, failed on their assertions against `c11aa6c` (test-first `fd21ec7`) and pass at `5d8d7c0`. `test/d23-character-reference.test.js`'s exact-output tests and `find-tasks` test, and the generative test's character-reference assertion, now over 12974 inputs, failed on their assertions against `e6f34b0` (test-first `978e7ec`) and pass at `6b75483`. The static check fails on any neutralizing pass in `src/` that runs before a pass that can join or reveal text, and on a `stripMarkup` whose last pass is not the character-reference break or whose break is not immediately preceded by the URL defang. In Session 17, when it required the URL defang as the last pass, it went red when the defang was moved ahead of the removal group in `src/sanitize.js`, and again when entity decoding was moved after it; in Session 18 it went red when the character-reference break was moved ahead of the defang, and again when the break was removed. `test/invariant4-url-embedding.test.js` and `test/invariant4-todoist-allowlist.test.js` also assert defanging, applied uniformly to every host with no allowlist or exemption; those have not been graded. The dedicated `url` field is not an exemption: it is removed from tool output entirely (AD-6), covered by `test/url-removed-from-tool-output.test.js` and `test/no-url-key-in-output.test.js`, both watched to fail before the removal. The `find-tasks` regression check in `test/invariant4-todoist-allowlist.test.js` requires success and the returned fixture task before asserting the `url` key absent, and fails when the handler throws (fixed in `6a99b01`, D-12). `test/calltool-asserts-iserror.test.js` fails on any test that calls `callTool` without asserting on `isError`. |
 | 5 | Every outbound HTTP request target, including any redirect target, is validated against the SSRF allowlist before the request is sent. | **HOLDS** | **UNGRADED** | `test/invariant5-redirect-ssrf.test.js` — the invariant is now satisfied by refusing all redirects rather than by re-validating redirect targets, so no second URL is ever contacted |
 | 6 | No tool-registration path exposes write tools when `TODOIST_READONLY` is not exactly `"false"`. | **HOLDS** through the shipped entry point, `src/index.js`, which builds the config with `loadConfig`. Does not cover a direct `createServer` call whose config omits `readOnly`, which registers all nine write tools (D-19). | **UNGRADED** | Behavior inventory §1, §7; `test/registration.test.js` |
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | **UNGRADED** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
@@ -524,7 +536,7 @@ tool-output assertion could not fail, which is why this column exists.
 | 9 | No log line emitted by `src/logger.js` contains the raw, unredacted API token. | **HOLDS** for tokens of 4 or more characters. `loadConfig` accepts shorter tokens and `registerSecret` never registers them (D-17). | **UNGRADED** | Behavior inventory §2–3, §6 (tested); review "Also checked" §3 — logger redacts every line, `client.js` never logs headers/bodies |
 | 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** for tokens of 4 or more characters. A shorter token is accepted by `loadConfig`, never registered, and leaks in an API error (D-17). | **UNGRADED** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path). `test/client.test.js`, `'API error text never leaks the token'`, registers a 40-character token, has the API echo it in a 401 body, and asserts the token is absent from the thrown error's message. Proven capable of failing by replacing `redact(detail)` with `detail` in `src/client.js`'s error message, which failed the token assertion (`6a99b01`, D-12). It tests the client, not a tool handler, and registers the token itself because `createClient` does not (D-17). The other tests cited here have not been graded, so the row stays UNGRADED. |
 | 11 | `API_BASE` / outbound hostname is a fixed literal, never derived from any tool input. | **HOLDS** | **UNGRADED** | Behavior inventory §6; review Finding 5 discussion ("the host is hardcoded... never derived from any tool argument") |
-| 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **HOLDS** | **UNGRADED** | `test/result-builder-shape.test.js` — `'Invariant 12: a tool result object is constructed in exactly one place in src/, never ad hoc per tool'`. The check is by object shape (any `{ content: [{ type: 'text', ... }] }`-shaped literal outside the one designated builder function), not by function name. Verified by deliberately introducing a violating tool and confirming the test caught it at the exact line. The invariant holds, but it does not mean every result is sanitized: the builder's error branch only redacts (D-7). The shape check misses `{ content: blocks }`, computed keys and a builder result modified afterwards (D-22). |
+| 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **HOLDS** | **UNGRADED** | `test/result-builder-shape.test.js` — `'Invariant 12: a tool result object is constructed in exactly one place in src/, never ad hoc per tool'`. The check is by object shape (any `{ content: [{ type: 'text', ... }] }`-shaped literal outside the one designated builder function), not by function name. Verified by deliberately introducing a violating tool and confirming the test caught it at the exact line. Since Session 19 the builder's error branch strips, fences, notices and caps the message as well as redacting it, so both branches get the same treatment (D-7). Errors the MCP SDK returns before a handler runs are not built in `src/` and are outside this invariant (D-7 known limit). The shape check misses `{ content: blocks }`, computed keys and a builder result modified afterwards (D-22). |
 
 **On the framing evidence in Invariants 1 and 2.** Until Session 9, both
 rows cited assertions that checked only whether `FRAME_OPEN` and
@@ -710,6 +722,22 @@ judgment.
   to `maxFieldChars` with a truncation marker inside the closing fence.
 - R12. `capOutput` must truncate oversized payloads to `maxOutputChars` and
   append a notice naming the cap.
+- **DECIDED, Session 19 (D-7).** Redaction runs before any stripping,
+  fencing or truncation, and again as the final step, so a cut can never
+  split a secret into a fragment that redaction no longer recognizes.
+  `safeField` redacts before `stripMarkup`, which can rejoin a secret
+  split by markup. `redactThenCut` in `src/redact.js` is the only code in
+  `src/` that cuts text, and it redacts before it cuts; `safeField`'s
+  field cap, `capOutput`'s output cap and `src/client.js`'s 500-character
+  error-body cap (R16) all use it. `buildResult` redacts again as its last
+  step. Found in Session 19 on the success path, the same bug class as
+  D-7: both caps cut before the only redaction pass, so a registered
+  token straddling either cap left an unredacted prefix. Evidence: the
+  token tests in `test/d7-error-result.test.js`, which place a token so
+  each cap cuts through it on the error and success paths, and its static
+  check, which fails on a string cut in `src/` outside `redactThenCut`, on
+  a `redactThenCut` that cuts anything but a value it redacted first, and
+  on a `stripMarkup` call whose argument is not `redact(...)`.
 - **DECIDED, Session 9.** This item bundled two questions with different
   answers.
 
@@ -937,12 +965,25 @@ judgment.
   count as a floor. Test-first commits `66926e0` and `ad33081`,
   implementation `0a5ab95`. This was D-2 in section 10, confirmed in
   Session 9.
-- R25. Every tool response, read and write alike, must be prefixed with
-  `UNTRUSTED_NOTICE` and size-capped via `capOutput` (see R12). The
-  prefix is applied unconditionally in `buildResult` and does not depend
-  on whether the payload contains any framed value. See AD-4 for why,
-  including the accepted consequence that four write tools carry the
-  notice while framing nothing.
+- R25. Every tool response, read and write alike, success and error,
+  must be prefixed with `UNTRUSTED_NOTICE` and size-capped via
+  `capOutput` (see R12). The prefix is applied unconditionally in
+  `buildResult` and does not depend on whether the payload contains any
+  framed value. See AD-4 for why, including the accepted consequence that
+  four write tools carry the notice while framing nothing.
+- **DECIDED, Session 19 (D-7).** An error result's message goes through
+  `safeField`, so it is redacted, stripped, URL-defanged and fenced as
+  one untrusted field, capped at `maxFieldChars`; `Error: ` precedes the
+  fence. The whole is then capped by `capOutput`, prefixed with
+  `UNTRUSTED_NOTICE` and redacted again, and the result keeps
+  `isError: true`. Error text is not withheld. Stripping spaces out
+  markup characters in the server's own messages too, so `task_id` in an
+  `add-comments` refusal reads `task id`; accepted, since stripping the
+  whole message is what keeps upstream text from escaping it.
+  Out of scope: errors the MCP SDK returns before a handler runs, such
+  as an input-validation error or an unknown tool name. They never reach
+  `buildResult`, carry no notice, are not capped, and echo the caller's
+  argument unstripped (D-7 known limit, section 10).
 
 ### Write tools
 - R26. `update-tasks` must send only caller-supplied fields (besides `id`)
@@ -1181,6 +1222,29 @@ planted source reached the static check's handling of a lookahead that
 never closes. `7da6b63` added one. `src/tools/write.js` function
 coverage is unchanged at 76.47%.
 
+Session 19, at commit `1521d06` (D-7 fix), measured the same way on
+Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 99.30% | 94.36% | 98.23% |
+
+All three figures are above the `6b75483` row, which `1f62f48` matched
+(98.59% / 93.59% / 97.23%), and no file present at `1f62f48` lost
+coverage. `src/client.js` rose from 97.12% / 89.47% to 99.04% / 93.22%
+lines and branches, `src/redact.js` from 92.86% / 62.50% / 75.00% to
+94.20% / 75.00% / 80.00%, `src/sanitize.js` branches from 88.24% to
+91.18%, and `src/tools/write.js` from 89.76% / 92.31% / 76.47% to
+100.00% / 96.61% / 100.00%. The D-7 class test ran `add-comments`,
+`add-projects`, `add-sections` and `add-labels` for the first time,
+which at first left `src/tools/write.js` at 63.64% branches, below
+`1f62f48`: V8 counts a function's branches only once it runs, so their
+success-side branches appeared uncovered. No branch lost coverage, but
+the drop was fixed by running every write tool on a successful response,
+with and without a body, and `add-comments`' two refusals. The
+test-first commit `37c29b6` measured 98.76% / 93.93% / 97.44%.
+`src/tools/write.js` function coverage is now **100.00%**.
+
 Child-process coverage. `test/live-smoke-date-account-guard.test.js`
 runs `scripts/live-smoke-date.js` as a child process. When
 `NODE_V8_COVERAGE` is set, Node's `child_process` copies it into a
@@ -1353,11 +1417,11 @@ code only; **review only** means taken from the review and not checked
 again. D-23 did not come from the review: it was found in Session 17
 while fixing D-6, recorded under D-15, and split out in Session 18.
 
-**Publication gate.** D-6 through D-12 and D-23 gate publication; D-6,
-D-8, D-9, D-10, D-11, D-12 and D-23 are fixed. D-13 through D-22 do
-not. While D-7 is
-open, `README.md`'s "Known defects" statement "No open defect affects
-tool output" is false.
+**Publication gate.** D-6 through D-12 and D-23 gate publication; all
+eight are fixed, D-7 last, in Session 19. D-13 through D-22 do not gate
+publication and remain open. Several of them affect tool output (D-13,
+D-14, D-15, D-16 and D-17), so `README.md` no longer says that no open
+defect does.
 
 ### D-1
 
@@ -1406,59 +1470,9 @@ Fixed in Session 10 by removing the `url` field from tool output; see AD-6. This
 
 Fixed in Session 17 by decoding entities first, repeating the passes that delete text until stable, and defanging every `scheme://` and bare `www.` host as `stripMarkup`'s last pass; see section 7, R10. Test-first `fd21ec7`, implementation `5d8d7c0`. This number is retired, not reused.
 
-### D-7: Error results are not stripped, framed, noticed or capped
+### D-7
 
-**Gates publication.** **Reproduced.** Review property 12 and section 4,
-row "`buildResult()` error envelope".
-
-`buildResult`'s error branch redacts the message and prefixes `Error: `,
-and does nothing else. Error text can carry up to 500 characters of the
-upstream response body (`src/client.js`), the request path including
-caller-supplied ids, network error text, and any other thrown message.
-None of it passes through `stripMarkup`, `safeField`, `UNTRUSTED_NOTICE`
-or `capOutput`. Every tool's `catch` wrapper routes through this branch,
-so all sixteen tools are affected.
-
-Reproduction: `fetch` stubbed to return HTTP 400 with the body
-`<b>OBEY</b> https://evil.example ` followed by 3000 `A` characters;
-server config `maxOutputChars: 100`; `find-projects` called with `{}`.
-Result: `isError: true`, 541 characters, beginning
-`Error: Todoist API 400 on GET /projects: <b>OBEY</b> https://evil.example AAAA`.
-It contains `<b>` and `https://evil.example`, carries no fence and no
-notice, and is 441 characters over the configured cap. The only bound is
-`client.js`'s 500-character slice of the body, which applies to
-`TodoistApiError` only.
-
-**Claims this makes false:**
-
-- Invariants 1 and 2, now **VIOLATED** on error responses; Invariant 4,
-  now **VIOLATED**.
-- R25: "Every tool response, read and write alike, must be prefixed with
-  `UNTRUSTED_NOTICE` and size-capped via `capOutput`."
-- `README.md`, "Content framing": the notice is prepended to "every
-  response from all sixteen tools".
-- `README.md`, "Output-size caps": "every tool response, read and write
-  alike, is capped in total size".
-
-AD-4 is not made false: it scopes the notice to successful responses.
-
-**Decided, Session 17.** Error results get the same treatment as success
-results. Todoist's error text is stripped, fenced, capped and carries
-`UNTRUSTED_NOTICE`, rather than being withheld from the result. AD-4 is
-amended to match before implementation, per the fix criteria below.
-
-**Fix criteria:**
-
-- Error text from any source goes through the same stripping and URL
-  defanging as untrusted fields, and text that can originate upstream is
-  framed.
-- Error results are bounded by `maxOutputChars` plus a fixed envelope.
-- Error results carry `UNTRUSTED_NOTICE` (decided above), recorded as an
-  amendment to AD-4 before implementation.
-- Redaction stays the last step.
-- A test using the reproduction input above fails against `04c46ec`. It
-  asserts no `<b>`, no `https://`, the framed text as a literal expected
-  string, and total length within the bound.
+Fixed in Session 19, test-first `37c29b6` and implementation `1521d06`: an error result gets the same treatment as a success result. The message goes through `safeField`, so it is stripped, URL-defanged and fenced; the result carries `UNTRUSTED_NOTICE` (AD-4, amended) and is capped by `maxOutputChars`; `isError` stays true; see section 7, R25. The same session found the success path cutting text before redacting it and fixed that as the same bug class: redaction now runs before any stripping, fencing or truncation and again as the last step; see R12. `test/d7-error-result.test.js` runs D-7's reproduction input, every tool in `tools/list` into it, three other error sources, a registered token placed so each cap cuts through it on both paths, and a static check for the bug class. **Known limit:** errors the MCP SDK returns before a handler runs, such as an input-validation error or an unknown tool name, never reach `buildResult`. They carry no notice, are not capped, and echo the caller's argument unstripped, so a URL the caller supplied comes back in re-parseable form. That text comes from the caller, not from Todoist; it is out of scope for this fix and qualifies Invariants 1, 2, 3, 4 and 12. This number is retired, not reused.
 
 ### D-8
 
@@ -1494,7 +1508,10 @@ Fixed in Session 12, `6a99b01`, by making both tests assert the property they na
   pair, and the fences and truncation marker come on top of it. Both caps
   are applied after full sanitization and full serialization, so neither
   bounds CPU or memory.
-- Error results are not capped at all; that is D-7.
+- Error results have been capped since Session 19 (D-7), so this entry
+  applies to them too: under a small cap, D-7's reproduction input
+  leaves the error's fence open. Since Session 19, text is also redacted
+  before each cut (R12).
 
 **Claim this makes false:** `README.md`, "Output-size caps": every
 response "is capped in total size".
