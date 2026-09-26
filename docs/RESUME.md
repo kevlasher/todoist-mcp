@@ -15,25 +15,22 @@ machine.
 
 - Branch: work happens on a short-lived branch per cloud session, merged
   into `main` by pull request. `main` on `origin` is the source of truth.
-- Tests: 248/248 passing, under Node 20 (see section 8).
+- Tests: 265/265 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 18 are complete; section 7 records Session 18.
+- Sessions 1 through 19 are complete; section 7 records Session 19.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
-  D-12, D-11, D-8, D-9, D-10 and D-6 are done (section 7), D-6 in
-  test-first commit `fd21ec7` and implementation `5d8d7c0`. D-23, found
-  while fixing D-6 and gating publication, is done too, in test-first
-  commit `978e7ec` and implementation `6b75483`. **Next: the
-  remaining gating defect, D-7, before publication.** Its fix criteria
-  and reproduction input are in section 10, and its notice question is
-  decided there: error results get the same treatment as success
-  results. D-13 through D-22 do not gate publication.
-- After those, and still before the repository goes public:
+  Every defect gating publication is done: D-12, D-11, D-8, D-9, D-10,
+  D-6, D-23 and, last, D-7 in Session 19, in test-first commit `37c29b6`
+  and implementation `1521d06` (section 7). D-13 through D-22 do not
+  gate publication and stay open.
+- **Next: publication preparation**, before the repository goes public:
   - the free scanning stack on GitHub, with CI running the suite under
     Node 20;
   - a final read of `README.md`, which must include the README claims
-    that section 10's entries name as false;
+    that section 10's entries name as false (D-13's "capped in total
+    size" is one);
   - a sweep of em dashes from the published files.
 - Six architecture decisions recorded in `docs/SPEC.md` section 4:
   AD-1 (mode selection belongs to the agent layer), AD-2 (URLs defanged,
@@ -230,6 +227,29 @@ Superseded on 2026-09-24: the independent code review found seven new
 defects that gate publication, D-6 through D-12 (see section 1). The
 paragraph beginning "Section 10 of `docs/SPEC.md` holds D-4" describes
 the state at the end of Session 10.
+
+**D-7: done, Session 19.** Test-first commit `37c29b6`, implementation
+`1521d06`. An error result now gets the same treatment as a success
+result: `buildResult` passes the message through `safeField`, so it is
+redacted, stripped, defanged and fenced, caps the whole with
+`capOutput`, prefixes `UNTRUSTED_NOTICE` and keeps `isError: true`.
+Recorded under R25; AD-4 amended so the notice covers error results.
+The success path cut text before redacting it, the same bug class, and
+was fixed too: `redactThenCut` in `src/redact.js` is the only code in
+`src/` that cuts text and it redacts first, `safeField` redacts before
+stripping, and `buildResult` redacts last; recorded under R12.
+`test/d7-error-result.test.js` checks D-7's reproduction input as an
+exact string, runs every tool in `tools/list` and three other error
+sources, places a token where each cap cuts through it on both paths,
+and has a static check for the bug class. Known limit, recorded under
+D-7: errors the MCP SDK returns before a handler runs, such as an
+input-validation error, never reach `buildResult`, and echo the
+caller's argument unstripped. Error text now reads as stripped text, so
+`task_id` in an `add-comments` refusal reads `task id`. Invariants 1, 2
+and 4 hold for every result `buildResult` builds. `README.md`'s "No
+open defect affects tool output" was false for D-13 to D-17 as well
+and is reworded. D-7 has left section 10. 265 tests pass. Next:
+publication preparation (section 1).
 
 **D-23: done, Session 18.** Test-first commit `978e7ec`, implementation
 `6b75483`, and `7da6b63` to restore one test file's line coverage. A
