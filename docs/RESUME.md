@@ -15,14 +15,16 @@ machine.
 
 - Branch: work happens on a short-lived branch per cloud session, merged
   into `main` by pull request. `main` on `origin` is the source of truth.
-- Tests: 216/216 passing, under Node 20 (see section 8).
+- Tests: 248/248 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 17 are complete; section 7 records Session 17.
+- Sessions 1 through 18 are complete; section 7 records Session 18.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
   D-12, D-11, D-8, D-9, D-10 and D-6 are done (section 7), D-6 in
-  test-first commit `fd21ec7` and implementation `5d8d7c0`. **Next: the
+  test-first commit `fd21ec7` and implementation `5d8d7c0`. D-23, found
+  while fixing D-6 and gating publication, is done too, in test-first
+  commit `978e7ec` and implementation `6b75483`. **Next: the
   remaining gating defect, D-7, before publication.** Its fix criteria
   and reproduction input are in section 10, and its notice question is
   decided there: error results get the same treatment as success
@@ -229,6 +231,28 @@ defects that gate publication, D-6 through D-12 (see section 1). The
 paragraph beginning "Section 10 of `docs/SPEC.md` holds D-4" describes
 the state at the end of Session 10.
 
+**D-23: done, Session 18.** Test-first commit `978e7ec`, implementation
+`6b75483`, and `7da6b63` to restore one test file's line coverage. A
+character reference the decoder does not know, such as in
+`http&colon;//evil.example/p`, or one left by a single decoding round,
+such as `&amp;lt;`, used to pass through `stripMarkup`, so a renderer
+that decodes entities saw a URL or a comment. It was recorded under
+D-15 in Session 17 and became D-23, gating publication, because it made
+`README.md`'s claim that nothing clickable or re-parseable reaches the
+agent false. `stripMarkup`'s last pass, after the URL defang, now
+replaces the `&` of every remaining semicolon-terminated character
+reference with `[&]`. Decoding is unchanged. Recorded under R10, with
+the reasons semicolon-less legacy names and bare domain names are out
+of scope. `test/d23-character-reference.test.js` has exact outputs and
+a `find-tasks` run. The generative check in
+`test/d6-url-defang-order.test.js` also asserts that no character
+reference survives, over 12974 inputs, and its static check now
+requires the break as `stripMarkup`'s last pass, right after the URL
+defang. `README.md`, Invariant 4 and R10 now say that only URLs
+beginning with a scheme followed by `://` or with `www.` are defanged
+and that bare domain names are left as written. D-15 narrowed; D-23 has
+left section 10. 248 tests pass. Next: D-7.
+
 **D-6: done, Session 17.** Test-first commit `fd21ec7`, implementation
 `5d8d7c0`. `stripMarkup` decodes entities before any other pass, removes
 comments, tags and Markdown link syntax and rejoins soft-wrapped URLs in
@@ -242,7 +266,8 @@ reproduction inputs, a `find-tasks` run, a generative check over 12290
 inputs, and a static check for the bug class over every named function
 in `src/`, which found two more instances in `stripMarkup` and none
 elsewhere. Named entities the decoder does not know (`&colon;`,
-`&period;`) are recorded under D-15, not fixed. D-7's notice question is
+`&period;`) are recorded under D-15, not fixed; they became D-23 and
+were fixed in Session 18. D-7's notice question is
 decided and recorded under D-7. D-6 has left section 10. 216 tests
 pass. Next: D-7.
 

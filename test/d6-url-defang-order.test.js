@@ -30,10 +30,13 @@ import { stripMarkup, safeField, FRAME_OPEN, FRAME_CLOSE, UNTRUSTED_NOTICE } fro
  *   - A static check over every named function in src/: a pass that
  *     neutralizes a pattern may not be followed by a pass that can join or
  *     reveal text unless both repeat together until nothing changes, and
- *     stripMarkup's last pass must be the URL defang. It fails closed on
- *     any call in stripMarkup it cannot classify.
+ *     stripMarkup's last pass must be the character-reference break (D-23)
+ *     with the URL defang immediately before it. It fails closed on any
+ *     call in stripMarkup it cannot classify.
  *   - A generative check over inputs combining split link syntax, numeric
- *     and named entities, HTML comments, tags and URL fragments.
+ *     and named entities, unknown and double-encoded named references,
+ *     HTML comments, tags and URL fragments. It also checks D-23's
+ *     property: no character reference leaves stripMarkup.
  *
  * Fixture values avoid the implementation defaults, per SPEC section 8:
  * maxFieldChars 1500 (default 2000), maxOutputChars 123457 (default
@@ -291,6 +294,25 @@ function namedFunctions(toks) {
 const CHAR_CLASS = /^\[(?:\\.|[^\]\\])*\](?:\{\d+,?\d*\}|\+)?$/;
 
 /**
+ * True when a regex source is `&` followed by one lookahead group that
+ * runs to the end of the source, so a match is the `&` alone.
+ */
+function matchesAmpersandOnly(re) {
+  if (!re.startsWith('&(?=')) return false;
+  let depth = 0;
+  let inClass = false;
+  for (let j = 1; j < re.length; j++) {
+    const c = re[j];
+    if (c === '\\') j++;
+    else if (inClass) inClass = c !== ']';
+    else if (c === '[') inClass = true;
+    else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return j === re.length - 1;
+  }
+  return false;
+}
+
+/**
  * What a replacement can do to text:
  *   join       deletes text, so what is left on either side can meet
  *   reveal     turns an encoding into the text it stands for
@@ -298,12 +320,16 @@ const CHAR_CLASS = /^\[(?:\\.|[^\]\\])*\](?:\{\d+,?\d*\}|\+)?$/;
  *   charclass  replaces every instance of each character in a class, so
  *              a later join cannot recreate one, but a later reveal can
  *   defang     the URL defang
+ *   refbreak   the character-reference break (D-23): replaces a lone `&`
+ *              that starts a reference with `[&]`, so it neither decodes
+ *              nor deletes anything
  */
 function classifyReplace(a1, a2) {
   const re = a1.length === 1 && a1[0].type === 'regex' ? a1[0].value : null;
   if (a2.length === 1 && a2[0].type === 'string') {
     const to = a2[0].value;
     if (to === '' || /^(\$\d)+$/.test(to)) return { join: true, neutralize: true };
+    if (re !== null && to === '[&]' && matchesAmpersandOnly(re)) return { refbreak: true, neutralize: true };
     if (re !== null && re.startsWith('&')) return { reveal: true };
     if (re !== null && CHAR_CLASS.test(re)) return { charclass: true };
     return { neutralize: true };
@@ -395,8 +421,14 @@ function orderingViolations(src, file) {
         }
       }
     });
-    if (fn.name === 'stripMarkup' && !passes[passes.length - 1]?.defang) {
-      out.push(`stripMarkup: its last pass is ${passes[passes.length - 1]?.label}, not the URL defang`);
+    if (fn.name === 'stripMarkup') {
+      const last = passes[passes.length - 1];
+      const beforeLast = passes[passes.length - 2];
+      if (!last?.refbreak) {
+        out.push(`stripMarkup: its last pass is ${last?.label}, not the character-reference break`);
+      } else if (!beforeLast?.defang) {
+        out.push(`stripMarkup: the pass before its character-reference break is ${beforeLast?.label}, not the URL defang`);
+      }
     }
   }
   const strip = fns.find((f) => f.name === 'stripMarkup');
@@ -433,7 +465,7 @@ test('D-6 class check: reports a defang that runs before link removal', () => {
   }`;
   const v = orderingViolations(planted, 'planted.js');
   assert.ok(v.some((s) => /defangUrls\(\) runs before .*which can join/.test(s)), v.join('\n'));
-  assert.ok(v.some((s) => /last pass is .*not the URL defang/.test(s)), v.join('\n'));
+  assert.ok(v.some((s) => /last pass is .*not the character-reference break/.test(s)), v.join('\n'));
 });
 
 test('D-6 class check: reports comment removal before entity decoding', () => {
@@ -441,7 +473,8 @@ test('D-6 class check: reports comment removal before entity decoding', () => {
     let text = String(input);
     text = text.replace(/<!--[\\s\\S]*?-->/g, '');
     text = decodeHtmlEntities(text);
-    return defangUrls(text);
+    text = defangUrls(text);
+    return text.replace(/&(?=[a-z]+;)/gi, '[&]');
   }`;
   const v = orderingViolations(planted, 'planted.js');
   assert.deepEqual(v, [
@@ -454,7 +487,8 @@ test('D-6 class check: accepts removals that repeat together, and rejects a grow
     let text = decodeHtmlEntities(String(input));
     text = untilStable(text, (t) => t.replace(/<!--[\\s\\S]*?-->/g, '').replace(/<[a-z][^>]*>/g, ''));
     text = text.replace(/[<>]/g, ' ');
-    return defangUrls(text);
+    text = defangUrls(text);
+    return text.replace(/&(?=[a-z]+;)/gi, '[&]');
   }`;
   assert.deepEqual(orderingViolations(ok, 'planted.js'), []);
   const grows = ok.replace(`/<[a-z][^>]*>/g, ''`, `/<[a-z][^>]*>/g, ' '`);
@@ -489,6 +523,58 @@ test('D-6 class check: fails closed on an unknown call in stripMarkup, an opaque
   assert.ok(v.some((s) => /replace\(\/x\/\) runs before .*split\(\)\.join\(\)/.test(s)), v.join('\n'));
 });
 
+test('D-23 class check: reports a character-reference break that runs before the URL defang', () => {
+  const planted = `export function stripMarkup(input) {
+    let text = decodeHtmlEntities(String(input));
+    text = text.replace(/&(?=[a-z]+;)/gi, '[&]');
+    return defangUrls(text);
+  }`;
+  assert.deepEqual(orderingViolations(planted, 'planted.js'), [
+    'stripMarkup: its last pass is planted.js:4 defangUrls(), not the character-reference break',
+  ]);
+});
+
+test('D-23 class check: reports a stripMarkup with no character-reference break', () => {
+  const planted = `export function stripMarkup(input) {
+    let text = decodeHtmlEntities(String(input));
+    return defangUrls(text);
+  }`;
+  assert.deepEqual(orderingViolations(planted, 'planted.js'), [
+    'stripMarkup: its last pass is planted.js:3 defangUrls(), not the character-reference break',
+  ]);
+});
+
+test('D-23 class check: reports a pass between the URL defang and the character-reference break', () => {
+  const planted = `export function stripMarkup(input) {
+    let text = decodeHtmlEntities(String(input));
+    text = defangUrls(text);
+    text = text.replace(/x/g, 'y');
+    return text.replace(/&(?=[a-z]+;)/gi, '[&]');
+  }`;
+  assert.deepEqual(orderingViolations(planted, 'planted.js'), [
+    'stripMarkup: the pass before its character-reference break is planted.js:4 replace(/x/), not the URL defang',
+  ]);
+});
+
+test('D-23 class check: a pass on & is a break only when it matches the & alone and writes [&]', () => {
+  for (const [re, to] of [
+    ['&(?=[a-z]+;)', '&amp;'],
+    ['&[a-z]+;', '[&]'],
+    ['&(?=[a-z]+;)[a-z]', '[&]'],
+    ['&(?=[a-z]+;)|x', '[&]'],
+    ['&(?=[a-z]', '[&]'],
+  ]) {
+    const planted = `export function stripMarkup(input) {
+      let text = decodeHtmlEntities(String(input));
+      text = defangUrls(text);
+      return text.replace(/${re}/gi, '${to}');
+    }`;
+    const v = orderingViolations(planted, 'planted.js');
+    assert.ok(v.some((s) => /defangUrls\(\) runs before .*which can join or reveal text/.test(s)), `${re} -> ${to}:\n${v.join('\n')}`);
+    assert.ok(v.some((s) => /last pass is .*not the character-reference break/.test(s)), `${re} -> ${to}:\n${v.join('\n')}`);
+  }
+});
+
 // ---- Generative check ---------------------------------------------------------------
 
 /**
@@ -505,6 +591,14 @@ function urlLeaks(out) {
   if (/www\./i.test(out)) leaks.push('www. with a live dot');
   if (/www\[\.\](?:[a-z0-9-]|\[\.\])*\./i.test(out)) leaks.push('www[.] host with a live dot');
   return leaks;
+}
+
+/**
+ * D-23's property: no semicolon-terminated character reference, in the
+ * CommonMark form, survives.
+ */
+function referenceLeaks(out) {
+  return [...out.matchAll(/&(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]*);/gi)].map((m) => `reference "${m[0]}"`);
 }
 
 const BASES = [
@@ -544,6 +638,10 @@ const ENCODERS = [
   (ch) => `&#X${code(ch).toString(16).toUpperCase()};`,
   (ch) => `&#000${code(ch)};`,
   (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&apos;' })[ch] ?? `&#${code(ch)};`,
+  // Named references the decoder does not know (D-23).
+  (ch) => ({ ':': '&colon;', '/': '&sol;', '.': '&period;', '?': '&quest;', '=': '&equals;' })[ch] ?? `&#${code(ch)};`,
+  // Double-encoded: one decoding round leaves a reference (D-23).
+  (ch) => `&amp;${({ ':': 'colon', '/': 'sol', '.': 'period', '<': 'lt', '>': 'gt', '&': 'amp' })[ch] ?? `#${code(ch)}`};`,
 ];
 
 // A run of the URL made into a link label; the label is kept, the link
@@ -610,13 +708,13 @@ function* generatedCases() {
   }
 }
 
-test('D-6 generative: no unbroken scheme:// and no www. host with a live dot survives stripMarkup or safeField', (t) => {
+test('D-6 and D-23 generative: no unbroken scheme://, no www. host with a live dot and no character reference survives stripMarkup or safeField', (t) => {
   let cases = 0;
   const failures = [];
   for (const input of generatedCases()) {
     cases++;
     for (const [fn, out] of [['stripMarkup', stripMarkup(input)], ['safeField', safeField(input, 1500)]]) {
-      const leaks = urlLeaks(out);
+      const leaks = [...urlLeaks(out), ...referenceLeaks(out)];
       if (leaks.length) failures.push(`${fn}(${JSON.stringify(input)}) = ${JSON.stringify(out)}: ${leaks.join(', ')}`);
     }
   }
@@ -632,4 +730,14 @@ test('D-6 generative: the leak detector flags each form it exists to catch', () 
   assert.deepEqual(urlLeaks('hxxpsx://a'), ['unbroken "hxxpsx://"']);
   assert.deepEqual(urlLeaks('www.a'), ['www. with a live dot']);
   assert.deepEqual(urlLeaks('www[.]a.b'), ['www[.] host with a live dot']);
+});
+
+test('D-23 generative: the reference detector flags each form of character reference', () => {
+  assert.deepEqual(referenceLeaks('[&]colon; [&]#58; & 58; &1; &x a & b AT&T &;'), []);
+  assert.deepEqual(referenceLeaks('&colon;'), ['reference "&colon;"']);
+  assert.deepEqual(referenceLeaks('&COLON;'), ['reference "&COLON;"']);
+  assert.deepEqual(referenceLeaks('&frac12;'), ['reference "&frac12;"']);
+  assert.deepEqual(referenceLeaks('&#58;'), ['reference "&#58;"']);
+  assert.deepEqual(referenceLeaks('&#x3a;'), ['reference "&#x3a;"']);
+  assert.deepEqual(referenceLeaks('&#X3A;'), ['reference "&#X3A;"']);
 });
