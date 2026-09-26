@@ -149,8 +149,16 @@ export function stripMarkup(input) {
   text = text.replace(/[ \t]{2,}/g, ' ');
   text = text.replace(/\n{3,}/g, '\n\n');
 
-  // Defang URLs last, so no later pass can reassemble one.
-  return defangUrls(text.trim());
+  // Defang URLs after every pass that can join or reveal text, so none
+  // can reassemble one.
+  text = defangUrls(text.trim());
+
+  // Break every character reference still left: one the decoder does not
+  // know (`&colon;`), or one a single decoding round leaves behind
+  // (`&amp;lt;`). Only the `&` is replaced, with `[&]`, so no renderer can
+  // decode it into a URL or markup. A reference is the CommonMark form,
+  // ending in `;` (D-23).
+  return text.replace(/&(?=#\d+;|#x[0-9a-f]+;|[a-z][a-z0-9]*;)/gi, '[&]');
 }
 
 /**
