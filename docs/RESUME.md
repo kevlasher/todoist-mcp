@@ -31,8 +31,14 @@ machine.
   SHAs, and no secrets. CodeQL and secret scanning are deliberately not
   in it: on a private repository they need GitHub's paid security
   features and would fail on every run.
+- The second independent review is recorded, Session 20. It is dated
+  2026-09-26 and kept verbatim at
+  `docs/reviews/2026-09-26-independent-code-review.md`. Its one gating
+  finding is D-24 in `docs/SPEC.md` section 10, a markup-split token
+  fragment surviving `src/client.js`'s 500-character error-body cut. Its
+  other new findings were added to D-13, D-14, D-16, D-17, D-19 and D-22.
 - **Next: publication preparation.** Remaining steps, in order:
-  - a second independent review, and fixes for its findings;
+  - fix D-24, the second review's gating finding;
   - a full-history secret scan before the repository goes public;
   - a final read of `README.md`, which must include the README claims
     that section 10's entries name as false (D-13's "capped in total

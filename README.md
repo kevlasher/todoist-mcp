@@ -113,10 +113,11 @@ These aren't gaps scheduled to close — they're inherent to what a tool-registr
 
 ## Known defects
 
-No open defect gates publication. Open defects remain, and some of them affect tool output. Full root cause and fix criteria for every open defect live in `docs/SPEC.md` section 10.
+One open defect gates publication: D-24, a registered token split by markup in a Todoist error body can come back as an unredacted fragment, so the token-redaction claim above does not yet hold for that case. Other open defects remain, and some of them affect tool output. Full root cause and fix criteria for every open defect live in `docs/SPEC.md` section 10.
 
 These affect tool output:
 
+- D-24: an HTTP error body is cut at 500 characters before markup is stripped, so a token split by markup across that cut comes back as a contiguous fragment redaction does not recognize.
 - D-13: the output and field caps bound a prefix, not the whole response, so a cut can leave a fence open and a response can run past its cap.
 - D-14: pagination can report a short result as complete, and can loop without end.
 - D-15: the sanitizer misses lists and Unicode format characters.
