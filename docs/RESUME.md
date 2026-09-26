@@ -15,9 +15,9 @@ machine.
 
 - Branch: work happens on a short-lived branch per cloud session, merged
   into `main` by pull request. `main` on `origin` is the source of truth.
-- Tests: 265/265 passing, under Node 20 (see section 8).
+- Tests: 273/273 passing, under Node 20 (see section 8).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 19 are complete; section 7 records Session 19.
+- Sessions 1 through 20 are complete; section 7 records Session 20.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
@@ -31,8 +31,14 @@ machine.
   SHAs, and no secrets. CodeQL and secret scanning are deliberately not
   in it: on a private repository they need GitHub's paid security
   features and would fail on every run.
+- The second independent review is recorded, Session 20. It is dated
+  2026-09-26 and kept verbatim at
+  `docs/reviews/2026-09-26-independent-code-review.md`. Its one gating
+  finding, D-24, a markup-split token fragment surviving
+  `src/client.js`'s 500-character error-body cut, is fixed (section 7).
+  Its other new findings were added to D-13, D-14, D-16, D-17, D-19 and
+  D-22, which do not gate publication.
 - **Next: publication preparation.** Remaining steps, in order:
-  - a second independent review, and fixes for its findings;
   - a full-history secret scan before the repository goes public;
   - a final read of `README.md`, which must include the README claims
     that section 10's entries name as false (D-13's "capped in total
@@ -235,6 +241,24 @@ Superseded on 2026-09-24: the independent code review found seven new
 defects that gate publication, D-6 through D-12 (see section 1). The
 paragraph beginning "Section 10 of `docs/SPEC.md` holds D-4" describes
 the state at the end of Session 10.
+
+**D-24: done, Session 20.** The second independent review, dated
+2026-09-26, is recorded verbatim in `docs/reviews/` (`76787c1`). The
+reviewer had `src/` and `test/` only. Its error-fragment reproduction
+held against `7286195`: a registered token split by `<b></b>` across
+`src/client.js`'s 500-character error-body cut came back with its first
+28 characters unredacted, because the cut ran before `safeField`
+stripped the markup. Recorded as D-24, gating publication, and fixed by
+removing that cut: no text is cut before it has been redacted, stripped
+and redacted again (R12, R16). Test-first `926c798`, static-check fix
+`63e41d9`, implementation `d0ae2e5`.
+`test/d24-markup-split-token.test.js` places a markup-split token at
+every cut point on both paths, at every position inside it; its static
+check went red on five mutations of `src/`. `926c798`'s message
+misstates its count as 266 pass, 7 fail; it was 267 and 6. The review's
+other findings were added to the non-gating entries, and R10 names three
+more out-of-scope URL forms. D-24 has left section 10. 273 tests pass.
+Next: publication preparation (section 1).
 
 **D-7: done, Session 19.** Test-first commit `37c29b6`, implementation
 `1521d06`. An error result now gets the same treatment as a success

@@ -33,6 +33,7 @@ Maintenance: one row per session, added when the session ends.
 | 17 | D-6 fixed, together with D-15's entity-encoded comment. `stripMarkup` decodes entities before any other pass, removes comments, tags and Markdown link syntax and rejoins soft-wrapped URLs in one group repeated until stable, and defangs URLs as its last pass. Defanging covers any `scheme://`, matched from the start of its run of scheme characters, and bare `www.` hosts; `http` and `https` keep `hxxp` and `hxxps`, any other scheme gets `[:]//`, and dots are bracketed in every case. Decisions recorded under R10. Test-first `fd21ec7`, implementation `5d8d7c0`. `test/d6-url-defang-order.test.js` checks exact outputs for D-6's and D-15's reproduction inputs, runs them through `find-tasks`, and runs a generative check over 12290 inputs. For the bug class, a static check over every named function in `src/` found two more instances in `stripMarkup`, a tag joining a comment opener and a nested link revealed by link removal, and none elsewhere; both are fixed. The soft-wrap join is now linear. Named entities the decoder does not know, found during the fix, recorded under D-15. D-7's notice question decided: error results get the same treatment as success results. Invariant 4 is now VIOLATED on error responses only (D-7). D-6 left section 10 and D-15 was narrowed. Coverage recorded for `5d8d7c0`. | Sections 5, 7, 8, 10 |
 | 18 | D-23 recorded and fixed. A character reference the decoder does not know (`http&colon;//evil.example/p`), or one a single decoding round leaves behind (`&amp;lt;!-- x --&amp;gt;`), passed through `stripMarkup` as text, so a renderer that decodes entities saw a URL or a comment. Session 17 had recorded it under D-15; it became D-23, gating publication, because it made `README.md`'s claim that nothing clickable or re-parseable reaches the agent false. `stripMarkup`'s last pass, after the URL defang, now replaces the `&` of every remaining semicolon-terminated character reference with `[&]`; decoding is unchanged. Decision recorded under R10, with why semicolon-less legacy names are out of scope and that bare domain names are left as written. Test-first `978e7ec`, implementation `6b75483`; `7da6b63` restored one test file's line coverage. `test/d23-character-reference.test.js` checks exact outputs and a `find-tasks` run. The generative check in `test/d6-url-defang-order.test.js` also asserts that no character reference survives, now over 12974 inputs. Its static check now requires the character-reference break as `stripMarkup`'s last pass with the URL defang immediately before it, and went red when the break was moved ahead of the defang and when it was removed. `README.md`, Invariant 4 and R10 narrowed to the URL forms defended. D-15 narrowed; D-23 left section 10. Coverage recorded for `6b75483`. | Sections 5, 7, 8, 10 |
 | 19 | D-7 fixed: `buildResult`'s error branch passes the message through `safeField`, so it is redacted, stripped, defanged and fenced, then caps the whole with `capOutput` and prefixes `UNTRUSTED_NOTICE`; `isError` stays true. Decision recorded under R25; AD-4 amended so the notice is unconditional on error results too. The success path cut text before redacting it, the same bug class, and was fixed with it: `redactThenCut` in `src/redact.js` is the only code in `src/` that cuts text and redacts first, `safeField` redacts before stripping, and `buildResult` redacts last; recorded under R12. Test-first `37c29b6`, implementation `1521d06`. `test/d7-error-result.test.js` checks D-7's reproduction input as an exact string, every tool in `tools/list` and three other error sources, a token cut by each cap on both paths, and a static check that found `src/sanitize.js`'s two caps, its unredacted `stripMarkup` call and `src/client.js`'s correctly ordered but separate cut. Errors the MCP SDK returns before a handler runs recorded as D-7's known limit. Invariants 1, 2 and 4 restored to HOLDS for every result `buildResult` builds, and qualified with that limit, as are 3 and 12. `README.md`'s "No open defect affects tool output" reworded, since D-13 to D-17 do. D-7 left section 10; no defect gating publication remains. Coverage recorded for `1521d06`. | Sections 4, 5, 7, 8, 10 |
+| 20 | Second independent code review, dated 2026-09-26, recorded verbatim in `docs/reviews/`. The reviewer was given `src/` and `test/` only; `scripts/`, `package.json` and the lockfile were missing by mistake, so it ran 63 tests. Its markup-split token fragment reproduced against `7286195` and recorded as D-24, gating publication: the HTTP error body's 500-character cut runs before stripping, so a registered token split by markup comes back as a 28-character fragment redaction no longer recognizes. That makes R12's Session 19 decision, `README.md`'s token-redaction claim and Invariant 10 false; Invariant 10 marked VIOLATED. The review's other new findings added to D-13, D-14, D-16, D-17, D-19 and D-22; `"5junk"` and an unsafe integer as numeric settings, and a `Bearer` credential containing `:`, reproduced. R10's out-of-scope URL forms extended to `https:evil.example/x`, `//evil.example/x` and `mailto:leak@evil.example`. D-24 then fixed: `request()` in `src/client.js` no longer cuts an error body, so no text is cut before it has been redacted, stripped and redacted again; no bound was kept, since `TODOIST_MAX_FIELD_CHARS` has no upper limit (D-14). Decision recorded under R12, R16 amended, AD-4's amendment corrected. Test-first `926c798`, static-check fix `63e41d9`, implementation `d0ae2e5`. `test/d24-markup-split-token.test.js` places a markup-split token at every cut point on both paths, at every position inside it, with exact outputs; the four error-path tests failed against `7286195`'s code, and the two success-path tests passed before the fix, since that path never had the cut. Its static check for the bug class, text cut before it is stripped, flagged `src/client.js`'s cut and nothing else, and went red on five mutations of `src/`; one of them, `capOutput`'s result stripped through a variable, was missed at first and fixed in `63e41d9`. `926c798`'s message says 266 pass and 7 fail; the true figure at that commit is 267 and 6. Invariant 10 restored to HOLDS. D-24 left section 10; no defect gating publication remains. Coverage recorded for `d0ae2e5`. | Sections 4, 5, 7, 8, 10 |
 
 ## 1. Purpose
 
@@ -225,9 +226,9 @@ endpoint path to the new location, not to start following redirects.
 **Amended, Session 19 (D-7).** As first recorded, this decision covered
 successful responses only, and error results carried no notice. It now
 covers error results too, as decided in Session 17 under D-7 and
-implemented in Session 19. An error message can carry up to 500
-characters of Todoist's response body, which is as attacker-influenced as
-any task text, and it is now fenced like any untrusted field, so on an
+implemented in Session 19. An error message can carry Todoist's whole
+response body, held to `maxFieldChars` by `safeField` since Session 20
+(D-24), and that body is as attacker-influenced as any task text, and it is now fenced like any untrusted field, so on an
 error result the notice describes a marker that is actually present.
 Errors the MCP SDK returns before a handler runs, such as an
 input-validation error, never reach `buildResult` and carry no notice;
@@ -534,7 +535,7 @@ tool-output assertion could not fail, which is why this column exists.
 | 7 | No tool in this server can delete, reorder, reassign, or manage reminders/filters/workspace-analytics objects. | **HOLDS** | **UNGRADED** | Behavior inventory §9; `test/registration.test.js` — forbidden-name list enforced exhaustively |
 | 8 | The server exposes write tools if and only if it was started with `TODOIST_READONLY` set to exactly `"false"`; this is decided once at startup, before any Todoist content is read, by not registering those tools at all, and cannot be changed for the lifetime of the running process. | **HOLDS** through the shipped entry point, `src/index.js`. Does not cover a direct `createServer` call whose config omits `readOnly` (D-19). | **UNGRADED** | `test/registration.test.js` — `'read-only mode registers only the 7 read tools, no writes'`, `'read/write mode registers the full 16-tool set'`; behavior inventory §1, §7. (Per-request mode selection and human confirmation are out of scope for this invariant — see AD-1.) |
 | 9 | No log line emitted by `src/logger.js` contains the raw, unredacted API token. | **HOLDS** for tokens of 4 or more characters. `loadConfig` accepts shorter tokens and `registerSecret` never registers them (D-17). | **UNGRADED** | Behavior inventory §2–3, §6 (tested); review "Also checked" §3 — logger redacts every line, `client.js` never logs headers/bodies |
-| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** for tokens of 4 or more characters. A shorter token is accepted by `loadConfig`, never registered, and leaks in an API error (D-17). | **UNGRADED** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path). `test/client.test.js`, `'API error text never leaks the token'`, registers a 40-character token, has the API echo it in a 401 body, and asserts the token is absent from the thrown error's message. Proven capable of failing by replacing `redact(detail)` with `detail` in `src/client.js`'s error message, which failed the token assertion (`6a99b01`, D-12). It tests the client, not a tool handler, and registers the token itself because `createClient` does not (D-17). The other tests cited here have not been graded, so the row stays UNGRADED. |
+| 10 | No error thrown or returned by any tool handler in `src/` contains the raw, unredacted API token, regardless of where the error originates. | **HOLDS** for tokens of 4 or more characters. Was VIOLATED from Session 20's review until its fix (D-24): an HTTP error body carrying the token split by markup across a 500-character cut returned the token's first 28 characters; `test/d24-markup-split-token.test.js` failed against `7286195`'s code and passes at `d0ae2e5`. A shorter token is accepted by `loadConfig`, never registered, and leaks in an API error (D-17). | **UNGRADED** | `test/mcp-e2e.test.js` — `'a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)'` (covers the success path: the shared result builder applies `redact()` to all outgoing text, not only error text), plus the two plain-Error tests (`'a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool'` / `'— write tool'`, covering the error path). `test/client.test.js`, `'API error text never leaks the token'`, registers a 40-character token, has the API echo it in a 401 body, and asserts the token is absent from the thrown error's message. Proven capable of failing by replacing `redact(detail)` with `detail` in `src/client.js`'s error message, which failed the token assertion (`6a99b01`, D-12). It tests the client, not a tool handler, and registers the token itself because `createClient` does not (D-17). The other tests cited here have not been graded, so the row stays UNGRADED. |
 | 11 | `API_BASE` / outbound hostname is a fixed literal, never derived from any tool input. | **HOLDS** | **UNGRADED** | Behavior inventory §6; review Finding 5 discussion ("the host is hardcoded... never derived from any tool argument") |
 | 12 | No tool result object — success or error, read or write — is constructed anywhere in `src/` except by passing its payload through a single designated result builder shared by all sixteen tools. Tools may pass different payloads to it; there is no second sanitization path. | **HOLDS** | **UNGRADED** | `test/result-builder-shape.test.js` — `'Invariant 12: a tool result object is constructed in exactly one place in src/, never ad hoc per tool'`. The check is by object shape (any `{ content: [{ type: 'text', ... }] }`-shaped literal outside the one designated builder function), not by function name. Verified by deliberately introducing a violating tool and confirming the test caught it at the exact line. Since Session 19 the builder's error branch strips, fences, notices and caps the message as well as redacting it, so both branches get the same treatment (D-7). Errors the MCP SDK returns before a handler runs are not built in `src/` and are outside this invariant (D-7 known limit). The shape check misses `{ content: blocks }`, computed keys and a builder result modified afterwards (D-22). |
 
@@ -693,7 +694,12 @@ judgment.
   match becomes `[.]`. Only URLs that begin with a scheme followed by
   `://` or with `www.` are defanged. A bare domain name, such as
   `evil.example/path`, is left as written: defanging it is out of scope
-  (decided Session 18).
+  (decided Session 18). Also out of scope and left as written, recorded
+  in Session 20 from the second independent review: a scheme followed by
+  `:` without `//`, such as `https:evil.example/x` and
+  `mailto:leak@evil.example`, and a protocol-relative reference such as
+  `//evil.example/x`. Whether a client makes any of these clickable
+  depends on its renderer.
 
   **DECIDED, Session 18 (D-23).** `stripMarkup`'s last pass, after the URL
   defang, replaces the `&` of every remaining character reference with
@@ -738,6 +744,30 @@ judgment.
   check, which fails on a string cut in `src/` outside `redactThenCut`, on
   a `redactThenCut` that cuts anything but a value it redacted first, and
   on a `stripMarkup` call whose argument is not `redact(...)`.
+
+  **Made false, Session 20 (D-24).** Redacting before each cut is not
+  enough. `src/client.js`'s 500-character cut runs before `safeField`
+  strips markup, so a token split by markup is unrecognizable when it is
+  cut, and stripping then joins the kept part into a contiguous fragment
+  that neither later redaction matches. Reproduced in section 10, D-24.
+  The static check above passed on that code.
+
+  **DECIDED, Session 20 (D-24).** No text is cut before it has been
+  redacted, stripped and redacted again. `src/client.js` no longer cuts
+  an error body; it redacts it and passes it whole, and `safeField`
+  applies the field cap after cleaning. No larger safety bound was kept:
+  `TODOIST_MAX_FIELD_CHARS` has no upper limit (D-14), so no fixed bound
+  is out of reach of every configured cap, and the body is read whole
+  by `res.text()` before any cut, so a cut never bounded memory. The two
+  remaining cuts are `safeField`'s field cap, on text set from
+  `stripMarkup(redact(...))`, and `capOutput`'s output cap, whose output
+  nothing strips. Evidence: `test/d24-markup-split-token.test.js`, whose
+  static check fails on a cut in `src/` outside `redactThenCut`,
+  computed forms included; on a call to `redactThenCut` anywhere but
+  `safeField` and `capOutput`; on a `safeField` cut of a value not set
+  from `stripMarkup(redact(...))`; and on a `capOutput` call outside
+  `buildResult`, or whose result, directly or through a variable,
+  reaches `stripMarkup` or `safeField`.
 - **DECIDED, Session 9.** This item bundled two questions with different
   answers.
 
@@ -765,8 +795,12 @@ judgment.
 - R15. The API token must be sent only via the `Authorization: Bearer`
   header, never logged, never included in query-string logging.
 - R16. Non-2xx responses must become a `TodoistApiError` carrying `status`
-  and a redacted, length-capped (500 char) message; network-level failures
-  must be wrapped similarly.
+  and a redacted message; network-level failures must be wrapped
+  similarly. Since Session 20 (D-24) the client does not cut the message:
+  `buildResult` holds it to `maxFieldChars` through `safeField`, after
+  redaction and stripping, and to `maxOutputChars` through `capOutput`.
+  Until then it was cut to 500 characters before stripping, which let a
+  markup-split token survive as a fragment.
 - R17. `getPaginated` must respect the configured item cap exactly (slice
   final results to cap length) and follow `next_cursor` until exhausted or
   capped.
@@ -1245,6 +1279,21 @@ with and without a body, and `add-comments`' two refusals. The
 test-first commit `37c29b6` measured 98.76% / 93.93% / 97.44%.
 `src/tools/write.js` function coverage is now **100.00%**.
 
+Session 20, at commit `d0ae2e5` (D-24 fix), measured the same way on
+Node v20.20.2:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 99.32% | 94.53% | 98.33% |
+
+All three figures are above the `1521d06` row, which `7286195` matched
+(99.30% / 94.36% / 98.23%), and no file present at `7286195` lost
+coverage. `src/client.js` rose from 99.04% to 99.06% lines, with
+branches and functions unchanged at 93.22% and 100.00%. The rest of
+the rise is the new `test/d24-markup-split-token.test.js`, at 99.76% /
+96.43% / 100.00%; its one uncovered line is the static check's fallback
+for a call that never closes.
+
 Child-process coverage. `test/live-smoke-date-account-guard.test.js`
 runs `scripts/live-smoke-date.js` as a child process. When
 `NODE_V8_COVERAGE` is set, Node's `child_process` copies it into a
@@ -1417,9 +1466,21 @@ code only; **review only** means taken from the review and not checked
 again. D-23 did not come from the review: it was found in Session 17
 while fixing D-6, recorded under D-15, and split out in Session 18.
 
+**D-24, and additions marked "second review".** These come from a second
+independent code review dated 2026-09-26, kept verbatim at
+`docs/reviews/2026-09-26-independent-code-review.md`. The reviewer, the
+same model as the first, was given `src/` and `test/` only. `scripts/`,
+`package.json` and the lockfile were missing from the archive by
+mistake, so it could not install the MCP SDK and ran 63 tests; it was
+not given this spec, `README.md` or `docs/RESUME.md`. **Reproduced**
+there means run against a scratch copy of `7286195` on 2026-09-26 under
+Node 20, with the exact input and output given. Findings the first
+review had already produced are not repeated.
+
 **Publication gate.** D-6 through D-12 and D-23 gate publication; all
-eight are fixed, D-7 last, in Session 19. D-13 through D-22 do not gate
-publication and remain open. Several of them affect tool output (D-13,
+eight are fixed, D-7 last, in Session 19. D-24, from the second review,
+gates publication and was fixed in Session 20. D-13 through D-22 do not
+gate publication and remain open. Several of them affect tool output (D-13,
 D-14, D-15, D-16 and D-17), so `README.md` no longer says that no open
 defect does.
 
@@ -1512,6 +1573,8 @@ Fixed in Session 12, `6a99b01`, by making both tests assert the property they na
   applies to them too: under a small cap, D-7's reproduction input
   leaves the error's fence open. Since Session 19, text is also redacted
   before each cut (R12).
+- Second review, by reading. `capOutput`'s cut also counts UTF-16 code
+  units, so it can split a surrogate pair, as `safeField`'s can.
 
 **Claim this makes false:** `README.md`, "Output-size caps": every
 response "is capped in total size".
@@ -1537,12 +1600,22 @@ leaves an open fence. A test with a small cap asserts the exact output.
   no upper bound. Items are not de-duplicated across pages. A small
   `maxOutputChars` can cut `get-overview`'s `fetches` and `warnings` as
   well as the name lists.
+- Second review, **reproduced**. `intFromEnv` uses `parseInt`, so
+  `TODOIST_MAX_ITEMS=5junk` loads as 5 with no warning, and
+  `TODOIST_MAX_OUTPUT_CHARS=9007199254740993` loads as
+  9007199254740992, which is not a safe integer.
+- Second review, review only. Pages are fetched one after another, so an
+  account changing between pages can make a list or a count neither the
+  before nor the after state. No fix is proposed; it limits what an
+  exact count can mean.
 
 **Fix criteria:** `truncated` is true whenever more items were received
 than kept. Pagination stops on a repeated cursor and on a page limit, and
 reports truncation when it does. An upper bound for each numeric cap is
-decided and recorded under R2, with R2's stderr warning. Tests cover each
-case and fail against `04c46ec`.
+decided and recorded under R2, with R2's stderr warning. A numeric
+setting that is not wholly a decimal integer, such as `5junk`, falls back
+to its default with that warning. Tests cover each case and fail against
+`04c46ec`, or against `7286195` for the second review's input.
 
 ### D-15: The sanitizer misses lists and Unicode format characters
 
@@ -1601,6 +1674,10 @@ Neither can come from the section 2 adversary, who writes text, not JSON
 structure. D-8's fix covers string input only; these are left for this
 entry.
 
+Second review, by reading: the unmarked fields are not held to
+`maxFieldChars` either, since only `safeField` applies it. A long value
+in one is bounded only by `maxOutputChars` (D-13).
+
 **Claim this weakens:** section 6, "Finding 1's injection surface is
 closed. Every echoed field originating as Todoist-writable text routes
 through `safeField`." That holds only if the unmarked fields cannot carry
@@ -1629,6 +1706,15 @@ what each becomes is recorded here.
   survives.
 - By reading. `createClient` does not register its token; only
   `createServer` does.
+- Second review, **reproduced**. `redact('Bearer abc:def')` returns
+  `Bearer [REDACTED]:def`. The Bearer pattern stops at the first
+  character outside its class, here `:`, and the rest of the credential
+  survives.
+- Second review, by reading. `src/logger.js` redacts each line but does
+  not remove newlines or other control characters from the message or
+  metadata, so a message carrying a newline can print what looks like a
+  separate log line. `request()` logs only the method and a path whose
+  ids R30 restricts, so no tool argument reaches it today.
 
 **Claims this makes false:** R7, "`authorization: <value>`-shaped
 substrings" are redacted. The scheme word is replaced and the value
@@ -1638,8 +1724,10 @@ redacted generically". Invariants 9 and 10 are qualified in the table.
 **Fix criteria:** `loadConfig` rejects a token too short to register, or
 registration accepts every token the config holds. Escaped forms of each
 registered secret are redacted, or tokens containing characters that JSON
-escapes are rejected. The Authorization pattern consumes the whole header
-value. `createClient` registers its token. Tests cover each.
+escapes are rejected. The Authorization and Bearer patterns consume the
+whole credential, up to whitespace or the end of a quoted value.
+`createClient` registers its token. Log lines have control characters
+other than tab escaped. Tests cover each.
 
 ### D-18: Tool input validation is looser than the tool descriptions
 
@@ -1683,7 +1771,8 @@ not have that check yet.
   no `readOnly`, registers all nine write tools. The shipped entry point
   always passes a boolean from `loadConfig`. R18 as written specifies
   this: writes register "when `cfg.readOnly` is falsy". Invariants 6 and
-  8 are qualified in the table.
+  8 are qualified in the table. Second review: `readOnly: null` and
+  `readOnly: 0` do the same, by the same condition.
 - By reading. `src/server.js`'s header says that in read-only mode "the
   write module is never imported/called". It is imported statically in
   every mode; it is only not called.
@@ -1696,6 +1785,16 @@ not have that check yet.
   is accepted. R14 says "exact-match `https://api.todoist.com` only". The
   host and scheme are exact-matched, but userinfo, port and path are not
   checked. Not reachable through the tools while `API_BASE` is a literal.
+- Second review, by reading. `getPaginated(path, query, maxItems)` takes
+  any `maxItems` from its caller. D-10's bound (R17) is enforced by
+  `itemCap` in the read tools, not by the client, so like `request()`
+  this is a tool-surface boundary, not a client one.
+- Second review, by reading. Invariant 12's "every result" covers what
+  the `add()` wrappers return. A success payload that fails to serialize
+  throws inside the wrapper's `try` and becomes an error result through
+  `buildResult`. An exception thrown while building the error result
+  itself, and the SDK's own validation, unknown-tool and transport
+  errors, never reach `buildResult` (D-7's known limit).
 
 **Fix criteria:** write tools register only when `cfg.readOnly === false`,
 and R18 is amended to match. The `server.js` comment is corrected. Section
@@ -1790,6 +1889,65 @@ remain.
   `filter` and `timezone` only.
 - The R17 pagination tests omit an overlong cursor-form page (D-14).
 
+Second review, review only unless marked. The section 8 fixture-default
+entry already covers the `update-tasks` framing test's `maxFieldChars:
+2000`.
+
+- `test/mcp-e2e.test.js`, the output-size cap test: its fixture also
+  exceeds the 50000 default, so dropping the configured cap passes too.
+- `test/mcp-e2e.test.js`, "client sees exactly the read tools in
+  read-only mode": it checks the listing, not that calling an unlisted
+  write tool is refused.
+- `test/mcp-e2e.test.js`, the normal-content secret test and both
+  plain-Error tests: an absence check passes if the content or error is
+  dropped altogether, and removing `buildResult`'s final redaction is
+  masked by `safeField`'s earlier one.
+- `test/client.test.js`, "API error text never leaks the token": it
+  registers the token by hand, so it cannot notice that `createClient`
+  does not (D-17).
+- `test/live-smoke-date-account-guard.test.js`: the unset-variables test
+  passes on any early exit, including a syntax error or a missing
+  script, which the reviewer observed because `scripts/` was missing.
+  The account-mismatch test passes on any failure after the account
+  GET. The verified-account test asserts neither a successful exit nor a
+  particular write.
+- `test/get-overview-truncation.test.js`: `assert.equal(TASK_CEILING,
+  5000)` compares a test constant with its own literal.
+  `assertFloorsMatchFetches` and `assertFilterFloors` compare two
+  production fields, so both can be wrong together, and the
+  over-ceiling per-project checks assert flags and types, not counts.
+- `test/d8-invalid-numeric-entity.test.js`, "no shaper throws on hostile
+  text in any framed field": it checks only that nothing throws.
+- `test/d6-url-defang-order.test.js`, the generative test: its detector
+  mirrors the implementation's grammar, and returning an empty string
+  everywhere passes it. The exact-output tests do not share this.
+- `test/invariant4-url-embedding.test.js`: both "no re-parseable URL
+  survives" families and the two numeric-entity tests assert absence
+  only, so deleting the text passes.
+- `test/invariant4-todoist-allowlist.test.js`, "stripMarkup defangs
+  uniformly": it requires a defanged marker, not the defanged form of
+  the input URL.
+- `test/url-removed-from-tool-output.test.js`: the `shapeTask`,
+  `shapeProject` and `add-tasks` families check the `url` key only, so
+  the same URL under another key passes.
+- Every assertion that imports `UNTRUSTED_NOTICE` compares against the
+  constant, so no test pins the notice's wording; an empty notice passes.
+- Static checks. `test/result-builder-shape.test.js` counts files, not
+  execution paths. `test/calltool-asserts-iserror.test.js` is satisfied
+  by one assertion for several calls in a block, or by one in
+  unreachable code. D-8's `String.fromCodePoint` check cannot notice the
+  validation being removed from `decodeCodePoint`, and its planted
+  "guarded" example contains an unguarded call. D-9's path check cannot
+  notice `assertPathId` weakened, a permitted literal endpoint changed,
+  or a request method called through an alias. D-10's cap check cannot
+  notice `itemCap`'s semantics changing under the same name. The
+  "defined once" checks for `assertPathId` and `itemCap` pass any single
+  weakened definition. D-6's pass-order check is not data flow: a
+  correctly ordered call whose result is discarded passes.
+  `test/live-write-paths-guarded.test.js` passes a guard name in unused
+  code, an unawaited guard, or a no-op guard. D-7's cut check is
+  covered by D-24.
+
 ### D-23
 
 Found in Session 17 and recorded under D-15. Recorded as its own defect,
@@ -1801,3 +1959,15 @@ so the URL was never defanged and a renderer that decodes entities
 displayed it. Fixed in Session 18 by breaking every remaining character
 reference as `stripMarkup`'s last pass; see section 7, R10. Test-first
 `978e7ec`, implementation `6b75483`. This number is retired, not reused.
+
+### D-24
+
+Found by the second independent review and reproduced in Session 20
+against `7286195`: an HTTP error body carrying a registered token split
+by markup across `src/client.js`'s 500-character cut came back with the
+token's first 28 characters contiguous and unredacted, because the cut
+ran before `safeField` stripped the markup. Fixed in Session 20 by
+removing that cut, so no text is cut before it has been redacted,
+stripped and redacted again; see section 7, R12 and R16. Test-first
+`926c798`, static-check fix `63e41d9`, implementation `d0ae2e5`. This
+number is retired, not reused.

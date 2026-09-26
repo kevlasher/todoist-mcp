@@ -10,7 +10,7 @@
  *     routed through the redactor (see redact.js / logger.js).
  */
 import { logger } from './logger.js';
-import { redact, redactThenCut } from './redact.js';
+import { redact } from './redact.js';
 
 export const API_HOST = 'api.todoist.com';
 export const API_BASE = `https://${API_HOST}/api/v1`;
@@ -153,8 +153,13 @@ export function createClient(config) {
       } catch {
         /* ignore body read failure */
       }
+      // Redacted, never cut here. A cut before markup is stripped can keep
+      // part of a token that markup splits, and stripping would then join
+      // that part into a fragment redaction no longer recognizes (D-24).
+      // buildResult's safeField redacts, strips and redacts again before
+      // its field cap cuts.
       throw new TodoistApiError(
-        `Todoist API ${res.status} on ${method} ${path}: ${redactThenCut(detail, 500).text}`,
+        `Todoist API ${res.status} on ${method} ${path}: ${redact(detail)}`,
         res.status
       );
     }
