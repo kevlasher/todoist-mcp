@@ -562,6 +562,7 @@ test('D-23 class check: a pass on & is a break only when it matches the & alone 
     ['&[a-z]+;', '[&]'],
     ['&(?=[a-z]+;)[a-z]', '[&]'],
     ['&(?=[a-z]+;)|x', '[&]'],
+    ['&(?=[a-z]', '[&]'],
   ]) {
     const planted = `export function stripMarkup(input) {
       let text = decodeHtmlEntities(String(input));
