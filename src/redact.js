@@ -44,6 +44,19 @@ export function redact(input) {
   return text;
 }
 
+/**
+ * The only place in src/ that cuts text (D-7). It redacts before it cuts, so
+ * a cut can never split a secret into a fragment that redaction no longer
+ * recognizes. Returns the redacted text, at most `cap` characters, and
+ * whether it was cut. test/d7-error-result.test.js checks statically that no
+ * other code in src/ cuts a string.
+ */
+export function redactThenCut(input, cap) {
+  const text = redact(input);
+  if (text.length <= cap) return { text, cut: false };
+  return { text: text.slice(0, cap), cut: true };
+}
+
 /** Redact recursively through an Error (message + stack). Returns a plain object. */
 export function redactError(err) {
   if (err instanceof Error) {
