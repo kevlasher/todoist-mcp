@@ -25,13 +25,21 @@ machine.
   D-6, D-23 and, last, D-7 in Session 19, in test-first commit `37c29b6`
   and implementation `1521d06` (section 7). D-13 through D-22 do not
   gate publication and stay open.
-- **Next: publication preparation**, before the repository goes public:
-  - the free scanning stack on GitHub, with CI running the suite under
-    Node 20;
+- CI is done. `.github/workflows/test.yml` runs `npm ci` and `npm test`
+  under Node 20 on every push to `main` and every pull request, with
+  `permissions: contents: read` only, both actions pinned to full commit
+  SHAs, and no secrets. CodeQL and secret scanning are deliberately not
+  in it: on a private repository they need GitHub's paid security
+  features and would fail on every run.
+- **Next: publication preparation.** Remaining steps, in order:
+  - a second independent review, and fixes for its findings;
+  - a full-history secret scan before the repository goes public;
   - a final read of `README.md`, which must include the README claims
     that section 10's entries name as false (D-13's "capped in total
     size" is one);
-  - a sweep of em dashes from the published files.
+  - a sweep of em dashes from the published files;
+  - after going public: enable CodeQL, secret scanning, push protection
+    and private vulnerability reporting.
 - Six architecture decisions recorded in `docs/SPEC.md` section 4:
   AD-1 (mode selection belongs to the agent layer), AD-2 (URLs defanged,
   not deleted), AD-3 (all redirects refused), AD-4 (the untrusted-content
