@@ -109,9 +109,10 @@ function defangUrls(text) {
  * Pass order is the control (D-6). A pass that decodes or deletes text can
  * reveal or join a construct that an earlier neutralizing pass has already
  * looked for, so: decoding runs first; the passes that delete text repeat
- * together until nothing changes; and URL defanging runs last, after every
- * pass that can join or reveal text. test/d6-url-defang-order.test.js checks
- * this order statically.
+ * together until nothing changes; URL defanging runs after every pass that
+ * can join or reveal text; and the character-reference break (D-23) runs
+ * last, right after it. test/d6-url-defang-order.test.js checks this order
+ * statically.
  */
 export function stripMarkup(input) {
   let text = typeof input === 'string' ? input : String(input ?? '');
