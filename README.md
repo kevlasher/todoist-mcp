@@ -8,7 +8,7 @@ It is not a fork of any existing server. Two patterns (the SSRF allowlist and to
 
 ## Why this exists
 
-As of mid-2026, off-the-shelf Todoist MCP servers were rejected because none offers a credential-level read-only tier reachable from local stdio, and all expose far more surface than ordinary GTD task management needs (deletion, reordering, assignment, workspace analytics, reminders, filters). This server instead exposes a controlled tool set, an env-gated read-only mode, and a set of in-server injection defenses, all auditable from this one repository.
+As of mid-2026, off-the-shelf Todoist MCP servers were rejected because none offers a credential-level read-only tier reachable from local stdio, and all expose far more surface than ordinary GTD task management needs (deletion, reordering, assignment, workspace analytics, reminders, filters). This server instead exposes a controlled tool set, an env-gated read-only mode, and a set of in-server injection defenses, all auditable from this one repository. Todoist also runs an official hosted MCP server, at `https://ai.todoist.net/mcp`, which clients connect to through OAuth ([Todoist API v1 reference](https://developer.todoist.com/api/v1/)); this server exists for deployments that need a local-stdio process instead.
 
 ### Credential constraint: read this first
 
