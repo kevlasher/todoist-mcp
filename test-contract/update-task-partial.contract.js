@@ -8,8 +8,8 @@
  * task state (including fields the request never sent), not just an echo
  * of what was sent.
  *
- * Not collected by `node --test test/` (lives outside test/, and its name
- * doesn't match a *.test.js pattern anyway). Not wired into npm test. Run
+ * Not collected by `npm test`, which runs only test/*.test.js (this file
+ * lives outside test/, and its name doesn't match that pattern anyway). Run
  * directly:
  *
  *   TODOIST_CONTRACT_TEST_TOKEN=xxx TODOIST_CONTRACT_TEST_ACCOUNT_ID=yyy \
