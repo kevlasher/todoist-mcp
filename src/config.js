@@ -28,10 +28,10 @@ export function isReadOnly(env = process.env) {
 /**
  * Resolve the API token. Two sources, in priority order:
  *   1. TODOIST_API_KEY       — the token directly in the environment.
- *   2. TODOIST_API_KEY_FILE  — path to a file (0600, claudecode-owned) whose
- *                              contents are the token. Preferred for the
- *                              deployed subagent so no token sits in the
- *                              committed agent file or a process listing.
+ *   2. TODOIST_API_KEY_FILE  — path to a file (0600, owned by the service
+ *                              user) whose contents are the token. Preferred
+ *                              for the deployed subagent so no token sits in
+ *                              the committed agent file or a process listing.
  */
 function resolveToken(env, readFileSync) {
   const direct = env.TODOIST_API_KEY;

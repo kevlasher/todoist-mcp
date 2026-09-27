@@ -275,9 +275,9 @@ that is recorded as D-7's known limit in section 10.
 **Facts, established by direct inspection during Session 9:**
 
 - A Claude Code subagent definition exists at two paths:
-  `.claude/agents/todoist.md` in this repository, and
-  `/workspace/projects/agent-os/.claude/agents/todoist.md` in the
-  consuming project. As of Session 9 the two files were byte-identical
+  `.claude/agents/todoist.md` in this repository, and the agent
+  definition file in the project that consumes this server. As of
+  Session 9 the two files were byte-identical
   and neither had been edited since July 21.
 - Only the Agent OS copy is loaded by anything. Nothing reads the copy in
   this repository at runtime. Editing it has no runtime effect.
@@ -306,8 +306,8 @@ that is recorded as D-7's known limit in section 10.
 
 - Two byte-identical copies with no synchronisation is a drift hazard. If
   someone edits either one, the other silently disagrees and nothing
-  reports it. This is the same shape of problem as the two server
-  directories described in `docs/RESUME.md` section 2, at smaller scale.
+  reports it. This is the same shape of problem as a repository copy of
+  the server and a separately deployed copy of it, at smaller scale.
   Naming one copy the example removes the ambiguity rather than trying to
   keep the copies equal.
 - Omitting `TODOIST_READONLY` demonstrates the fail-safe default that
@@ -1805,8 +1805,8 @@ port other than the default, and any path outside `/api/v1/`.
 
 **Does not gate publication.** Review property 9. By reading.
 
-`src/config.js` describes `TODOIST_API_KEY_FILE` as a "0600,
-claudecode-owned" file. Nothing checks mode, owner, file type or
+`src/config.js` describes `TODOIST_API_KEY_FILE` as a "0600, owned by
+the service user" file. Nothing checks mode, owner, file type or
 symlinks. Any readable file with non-empty trimmed contents is accepted.
 `README.md`'s credential storage section is advice and remains accurate.
 

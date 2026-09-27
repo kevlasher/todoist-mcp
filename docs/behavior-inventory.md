@@ -509,7 +509,7 @@ No write tool is ever invoked (`callTool`) in any test; all entries below are
   as a normal `isError` tool result is determined by
   `@modelcontextprotocol/sdk`'s internal handling, not by code in this repo.
 - **File permission enforcement for `TODOIST_API_KEY_FILE`.** Comments in
-  `config.js` describe the file as expected to be `0600`/claudecode-owned, but
+  `config.js` describe the file as expected to be `0600`/owned by the service user, but
   no code in this repo checks or enforces file permissions — actual exposure
   risk depends on how the deployment environment sets up that file.
 - **`JSON.stringify` failure in `write.js`.** `writeResult` calls
