@@ -1548,8 +1548,9 @@ review had already produced are not repeated.
 eight are fixed, D-7 last, in Session 19. D-24, from the second review,
 gates publication and was fixed in Session 20. D-13 through D-22 do not
 gate publication and remain open. Several of them affect tool output (D-13,
-D-14, D-15, D-16 and D-17), so `README.md` no longer says that no open
-defect does.
+D-14, D-15, D-16, D-17 and D-18), so `README.md` no longer says that no open
+defect does. D-18 was added to that list in Session 21: `find-tasks-by-date`
+returns the caller's `date` unframed in its `filter` field.
 
 ### D-1
 
