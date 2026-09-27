@@ -86,7 +86,7 @@ export function shapeComment(c, cfg) {
     task_id: c.task_id ?? null,
     project_id: c.project_id ?? null,
     posted_at: c.posted_at ?? c.posted ?? null,
-    // Attachments carry third-party filenames/URLs — frame the name, drop URL.
+    // Attachments carry third-party filenames/URLs: frame the name, drop URL.
     attachment: c.attachment
       ? { file_name: safeField(c.attachment.file_name, m) || null }
       : null,

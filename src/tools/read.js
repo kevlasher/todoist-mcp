@@ -1,5 +1,5 @@
 /**
- * Read tools — registered in ALL modes (read-only and read/write).
+ * Read tools: registered in ALL modes (read-only and read/write).
  *
  * Tool → Todoist API v1 REST mapping (documented in README):
  *   find-tasks         GET /tasks           | GET /tasks/filter?query=

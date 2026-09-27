@@ -7,8 +7,8 @@ import { stripMarkup, UNTRUSTED_NOTICE, FRAME_OPEN, FRAME_CLOSE } from '../src/s
 
 /**
  * Decision under test: no todoist.com allowlist exists. stripMarkup defangs
- * every URL-shaped sequence uniformly — break the scheme (http -> hxxp) and
- * every dot (. -> [.]) — regardless of host, so the text stays human-
+ * every URL-shaped sequence uniformly: break the scheme (http -> hxxp) and
+ * every dot (. -> [.]), regardless of host, so the text stays human-
  * readable but can neither autolink nor be re-parsed. This file was
  * originally written to test a todoist.com exemption; that idea was
  * dropped in favor of uniform defanging, so the cases below now prove the
@@ -46,7 +46,7 @@ async function connect(serverCfg) {
  * Assert a URL was defanged, not exempted and not merely deleted: the
  * original string must not survive verbatim, no live "http(s)://" scheme
  * may survive, the real host's dots must not survive un-bracketed, and a
- * defanged "hxx[p|ps]://" marker must actually be present — proving
+ * defanged "hxx[p|ps]://" marker must actually be present, proving
  * defanging happened rather than the text vanishing some other way.
  */
 function assertDefanged(output, url, label) {
@@ -124,7 +124,7 @@ test('REGRESSION CHECK: no Todoist task url survives in find-tasks output', asyn
 // 2. Defanging regression guards: each of these must be DEFANGED, not
 //    exempted and not silently deleted some other way. Several are
 //    host-matching tricks (userinfo, path, query-string, case, embedded
-//    subdomain) that would fool a naive substring check for "todoist.com" —
+//    subdomain) that would fool a naive substring check for "todoist.com";
 //    they matter less as allowlist bypasses now (there's no allowlist) and
 //    more as proof that defanging itself doesn't depend on host parsing at
 //    all: it applies uniformly, so none of these tricks change the outcome.
@@ -152,7 +152,7 @@ const defangCases = [
     url: 'https://evil.example/todoist.com/steal',
   },
   {
-    name: 'uppercase host trick — attacker-controlled hostname',
+    name: 'uppercase host trick, attacker-controlled hostname',
     url: 'https://TODOIST.COM.evil.example/steal',
   },
   {
@@ -164,7 +164,7 @@ const defangCases = [
     url: 'https://sub.todoist.com.evil.example/steal',
   },
   // No-exemption proof: a genuine todoist.com URL is defanged exactly like
-  // any other host — there is no allowlist anywhere in stripMarkup.
+  // any other host; there is no allowlist anywhere in stripMarkup.
   {
     name: 'NO-EXEMPTION PROOF: genuine todoist.com apex domain, showTask link',
     url: 'https://todoist.com/showTask?id=123',
@@ -176,7 +176,7 @@ const defangCases = [
 ];
 
 for (const { name, url } of defangCases) {
-  test(`stripMarkup defangs uniformly — ${name}`, () => {
+  test(`stripMarkup defangs uniformly: ${name}`, () => {
     const out = stripMarkup(`Click here: ${url} now`);
     assertDefanged(out, url, name);
   });

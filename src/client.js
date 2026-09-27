@@ -107,7 +107,7 @@ export function createClient(config) {
       }
     }
 
-    // SSRF allowlist — enforced on the fully-composed URL.
+    // SSRF allowlist, enforced on the fully-composed URL.
     assertAllowedUrl(url.toString());
 
     const headers = { Authorization: authHeader };
@@ -123,7 +123,7 @@ export function createClient(config) {
 
     let res;
     try {
-      // redirect: 'manual' — a redirect from the Todoist API is never
+      // redirect: 'manual'. A redirect from the Todoist API is never
       // expected in normal operation, so any 3xx is treated as an error
       // rather than something to transparently follow. This also stops the
       // Location target (attacker-influenced, since it originates from
@@ -139,7 +139,7 @@ export function createClient(config) {
     if (res.status >= 300 && res.status < 400) {
       // Same error type the SSRF allowlist check throws, so a redirect and
       // a disallowed host fail identically. Deliberately excludes the
-      // Location header value from the message — that value is
+      // Location header value from the message, because that value is
       // attacker-influenced content and must not be echoed back.
       throw new SsrfError(
         `Refusing request: received HTTP ${res.status} (redirect); redirects are never followed.`

@@ -1,5 +1,5 @@
 /**
- * Write tools — registered ONLY when TODOIST_READONLY=false.
+ * Write tools: registered ONLY when TODOIST_READONLY=false.
  *
  * When read-only, this module's registerWriteTools is never called, so these
  * tools do not exist in the process (server-layer separation, not a client-side

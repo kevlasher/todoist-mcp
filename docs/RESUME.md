@@ -138,13 +138,13 @@ publishing.
 - **All eleven `[DECISION NEEDED]` items in section 7 resolved.** Seven
   were decided inline. Four were not decisions at all but confirmed
   defects, now in section 10 as D-1 through D-4. Zero markers remain.
-  (An earlier version of this note said "ten" and "six" — recounted
+  (An earlier version of this note said "ten" and "six"; recounted
   directly against the pre-Session-9 commit; the correct totals are eleven
   and seven.) D-5 was also recorded in section 10 during Session 9, but
   from a different source: it came from reading `src/shape.js` directly,
   not from resolving a `[DECISION NEEDED]` item in section 7.
 - **Claims analysis complete** for `README.md` and the agent definition.
-  The claims list itself has since been retired — see section 4.
+  The claims list itself has since been retired; see section 4.
 - **AD-5 is written into `docs/SPEC.md` section 4.**
 - **The example agent definition now lives at
   `docs/examples/todoist-subagent.md` with an explanatory
@@ -170,7 +170,7 @@ publishing.
 Both items previously listed under "Remaining" are done. Session 9 has no
 open items.
 
-## 4. README and agent-definition claims — resolved
+## 4. README and agent-definition claims: resolved
 
 Session 9 produced a claims list here (False / Understated / Missing /
 Also-broken items found by comparing `README.md` and the agent definition
@@ -180,7 +180,7 @@ against the current `README.md` and found fully addressed: nothing on it
 describes the published README any longer.
 
 The itemized list is deliberately not kept here. A stale claims list that
-still reads like an open defect report is worse than no list — it invites
+still reads like an open defect report is worse than no list: it invites
 a future reader to mistake pre-rewrite README text for current text. If
 README drift is suspected later, re-diff `README.md` against `docs/SPEC.md`
 directly; don't try to revive this one.
@@ -413,7 +413,7 @@ defect rather than a code defect:
 
 - The fixture-default collision audit. A test fixture that sets a
   configuration value equal to the implementation's own fallback cannot
-  detect that the value stopped being plumbed through — demonstrated when
+  detect that the value stopped being plumbed through, as demonstrated when
   a fixture setting `maxFieldChars: 2000` stayed green even after the
   handler's `cfg.maxFieldChars` argument was removed, because `safeField`
   falls back to the same 2000. A later session must audit every fixture

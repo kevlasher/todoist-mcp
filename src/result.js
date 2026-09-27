@@ -1,7 +1,7 @@
 /**
  * The single result builder (Invariant 12).
  *
- * Every one of the sixteen tools — read or write, success or error — returns
+ * Every one of the sixteen tools (read or write, success or error) returns
  * whatever this function produces, and nothing else builds a `{ content: [...] }`
  * / `{ isError, content: [...] }` object anywhere in src/. Centralizing this is
  * what makes output-size capping, the untrusted-content notice and
@@ -10,7 +10,7 @@
  *
  * Per-field sanitization of untrusted text (safeField/stripMarkup) still
  * happens where a success payload is assembled (shape.js for read tools,
- * inline in write.js for echoed write fields) — this function does not know
+ * inline in write.js for echoed write fields); this function does not know
  * which fields in an arbitrary payload are untrusted prose. An error message
  * is one field, and it can carry upstream text, so this function passes it
  * through safeField itself (D-7). What it guarantees regardless is: every

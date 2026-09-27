@@ -42,14 +42,14 @@ const projectUrls = [
 ];
 
 for (const url of taskUrls) {
-  test(`D-5: shapeTask emits no url key even when the input carries one — ${url}`, () => {
+  test(`D-5: shapeTask emits no url key even when the input carries one: ${url}`, () => {
     const out = shapeTask({ id: '999', content: 'Buy milk', url }, cfg);
     assert.equal(Object.hasOwn(out, 'url'), false, `url key present: ${JSON.stringify(out.url)}`);
   });
 }
 
 for (const url of projectUrls) {
-  test(`D-5: shapeProject emits no url key even when the input carries one — ${url}`, () => {
+  test(`D-5: shapeProject emits no url key even when the input carries one: ${url}`, () => {
     const out = shapeProject({ id: '777', name: 'Work Project', url }, cfg);
     assert.equal(Object.hasOwn(out, 'url'), false, `url key present: ${JSON.stringify(out.url)}`);
   });
@@ -64,7 +64,7 @@ async function connect(serverCfg) {
 }
 
 for (const url of taskUrls) {
-  test(`D-5: add-tasks echo carries no url key even when the created object has one — ${url}`, async () => {
+  test(`D-5: add-tasks echo carries no url key even when the created object has one: ${url}`, async () => {
     const orig = globalThis.fetch;
     globalThis.fetch = async () => ({
       ok: true,

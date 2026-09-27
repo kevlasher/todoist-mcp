@@ -3,7 +3,7 @@
  * Local stdio entry point for the purpose-built Todoist MCP server.
  *
  * stdout is owned by the MCP stdio transport; all diagnostics go to stderr
- * (see logger.js). Config — including the read-only decision — is read once,
+ * (see logger.js). Config, including the read-only decision, is read once,
  * here, at startup.
  */
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';

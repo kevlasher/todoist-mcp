@@ -5,7 +5,7 @@
  *
  * The env-gated read-only decision happens HERE, once, at construction: when
  * cfg.readOnly is true the write module is never imported/called, so write
- * tools do not exist in the process — this is the server-layer read/write
+ * tools do not exist in the process. This is the server-layer read/write
  * separation described in the connections architecture (Invariant I1).
  */
 import { readFileSync } from 'node:fs';

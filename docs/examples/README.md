@@ -7,7 +7,7 @@ of it.
 
 ## Contents
 
-- `todoist-subagent.md` — a worked example of a Claude Code subagent
+- `todoist-subagent.md`: a worked example of a Claude Code subagent
   definition that launches this server read-only over stdio.
 
 ## About `todoist-subagent.md`

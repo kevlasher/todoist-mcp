@@ -4,13 +4,13 @@
  * sent."
  *
  * Decision (recorded here, not just in docs/SPEC.md): any 3xx response from
- * the Todoist API is treated as an error, full stop — it is never followed,
+ * the Todoist API is treated as an error, full stop. It is never followed,
  * regardless of what host/path the Location header names. A normal API call
  * to api.todoist.com should not redirect; a redirect means something changed
  * that should fail loudly rather than be silently adapted to. This is
  * implemented via `redirect: 'manual'` on the `fetch()` call in
  * `src/client.js`, plus a check that turns any 3xx status into the same
- * `SsrfError` the allowlist check throws — a redirect and a disallowed host
+ * `SsrfError` the allowlist check throws, so a redirect and a disallowed host
  * now fail identically, and neither ever contacts a second URL.
  *
  * Why the stub records `opts.redirect`: the fix is specifically that
@@ -97,7 +97,7 @@ for (const status of [301, 302, 307, 308]) {
 }
 
 // --- Lookalike-host redirect targets, same bypass shapes as client.test.js
-//     ("SSRF allowlist accepts only https api.todoist.com") — all refused
+//     ("SSRF allowlist accepts only https api.todoist.com"), all refused
 //     the same way as any other redirect, since the target is never even
 //     inspected. -------------------------------------------------------
 
@@ -127,7 +127,7 @@ test('302 redirect with a relative Location on the allowlisted host is refused o
   });
 
   // Decision recorded: any 3xx is an error, no exceptions for "safe-looking"
-  // targets. This case predates that decision — under the old (partially
+  // targets. This case predates that decision. Under the old (partially
   // violated) design, a same-host relative Location was let through, because
   // assertAllowedUrl only checks protocol+hostname and a relative Location
   // can only resolve back onto the same origin, so nothing there could have
@@ -135,7 +135,7 @@ test('302 redirect with a relative Location on the allowlisted host is refused o
   // the bar: the decision is that a redirect from the Todoist API is itself
   // the anomaly worth failing loudly on, regardless of where it points.
   // "Looks safe" is not the same as "expected", and normal Todoist API
-  // calls do not redirect at all — so this case is refused identically to
+  // calls do not redirect at all, so this case is refused identically to
   // every other one, and the fact that `/api/v1/other-endpoint` is never
   // even contacted (see the `calls` assertion below) is the point: the
   // client no longer needs to reason about where a redirect leads, because

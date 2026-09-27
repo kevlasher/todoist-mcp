@@ -8,7 +8,7 @@ import { stripMarkup, safeField } from '../src/sanitize.js';
  * text. stripMarkup satisfies this by defanging (not deleting) URL-shaped
  * text uniformly across every host: breaking the scheme and every dot. The
  * assertion helper below deliberately does not check that the URL text is
- * *absent* — under defanging the host text remains, just broken — it checks
+ * *absent* (under defanging the host text remains, just broken); it checks
  * that no *live* scheme or dotted host is reconstructable, in any form:
  * as a literal substring, after collapsing whitespace/newlines (catching a
  * link a downstream renderer would rejoin from a soft line-wrap), or as a
@@ -83,18 +83,18 @@ const cases = [
 ];
 
 for (const { name, input } of cases) {
-  test(`stripMarkup: no re-parseable URL survives — ${name}`, () => {
+  test(`stripMarkup: no re-parseable URL survives: ${name}`, () => {
     const out = stripMarkup(input);
     assertNoReparseableUrl(out, name);
   });
 
-  test(`safeField (tool-output path): no re-parseable URL survives — ${name}`, () => {
+  test(`safeField (tool-output path): no re-parseable URL survives: ${name}`, () => {
     const out = safeField(input);
     assertNoReparseableUrl(out, name);
   });
 }
 
-test('numeric HTML entities are decoded before tag-stripping — decimal (&#60; / &#62;)', () => {
+test('numeric HTML entities are decoded before tag-stripping: decimal (&#60; / &#62;)', () => {
   const out = stripMarkup('&#60;script&#62;alert(1)&#60;/script&#62;');
   assert.ok(
     !out.includes('<script>'),
@@ -106,7 +106,7 @@ test('numeric HTML entities are decoded before tag-stripping — decimal (&#60; 
   );
 });
 
-test('numeric HTML entities are decoded before tag-stripping — hexadecimal (&#x3C; / &#x3E;)', () => {
+test('numeric HTML entities are decoded before tag-stripping: hexadecimal (&#x3C; / &#x3E;)', () => {
   const out = stripMarkup('&#x3C;script&#x3E;alert(1)&#x3C;/script&#x3E;');
   assert.ok(
     !out.includes('<script>'),

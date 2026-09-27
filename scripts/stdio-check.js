@@ -3,7 +3,7 @@
  * Boots the REAL server process (src/index.js) over stdio via the MCP client's
  * StdioClientTransport and lists tools. Used to confirm, against an actually
  * spawned process (not the in-process harness), that read-only mode registers
- * no write tools. Uses a fake token — no network call is made by tools/list.
+ * no write tools. Uses a fake token; no network call is made by tools/list.
  *
  * Usage: TODOIST_READONLY=true node scripts/stdio-check.js
  */
