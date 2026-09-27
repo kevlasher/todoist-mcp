@@ -34,6 +34,7 @@ Maintenance: one row per session, added when the session ends.
 | 18 | D-23 recorded and fixed. A character reference the decoder does not know (`http&colon;//evil.example/p`), or one a single decoding round leaves behind (`&amp;lt;!-- x --&amp;gt;`), passed through `stripMarkup` as text, so a renderer that decodes entities saw a URL or a comment. Session 17 had recorded it under D-15; it became D-23, gating publication, because it made `README.md`'s claim that nothing clickable or re-parseable reaches the agent false. `stripMarkup`'s last pass, after the URL defang, now replaces the `&` of every remaining semicolon-terminated character reference with `[&]`; decoding is unchanged. Decision recorded under R10, with why semicolon-less legacy names are out of scope and that bare domain names are left as written. Test-first `978e7ec`, implementation `6b75483`; `7da6b63` restored one test file's line coverage. `test/d23-character-reference.test.js` checks exact outputs and a `find-tasks` run. The generative check in `test/d6-url-defang-order.test.js` also asserts that no character reference survives, now over 12974 inputs. Its static check now requires the character-reference break as `stripMarkup`'s last pass with the URL defang immediately before it, and went red when the break was moved ahead of the defang and when it was removed. `README.md`, Invariant 4 and R10 narrowed to the URL forms defended. D-15 narrowed; D-23 left section 10. Coverage recorded for `6b75483`. | Sections 5, 7, 8, 10 |
 | 19 | D-7 fixed: `buildResult`'s error branch passes the message through `safeField`, so it is redacted, stripped, defanged and fenced, then caps the whole with `capOutput` and prefixes `UNTRUSTED_NOTICE`; `isError` stays true. Decision recorded under R25; AD-4 amended so the notice is unconditional on error results too. The success path cut text before redacting it, the same bug class, and was fixed with it: `redactThenCut` in `src/redact.js` is the only code in `src/` that cuts text and redacts first, `safeField` redacts before stripping, and `buildResult` redacts last; recorded under R12. Test-first `37c29b6`, implementation `1521d06`. `test/d7-error-result.test.js` checks D-7's reproduction input as an exact string, every tool in `tools/list` and three other error sources, a token cut by each cap on both paths, and a static check that found `src/sanitize.js`'s two caps, its unredacted `stripMarkup` call and `src/client.js`'s correctly ordered but separate cut. Errors the MCP SDK returns before a handler runs recorded as D-7's known limit. Invariants 1, 2 and 4 restored to HOLDS for every result `buildResult` builds, and qualified with that limit, as are 3 and 12. `README.md`'s "No open defect affects tool output" reworded, since D-13 to D-17 do. D-7 left section 10; no defect gating publication remains. Coverage recorded for `1521d06`. | Sections 4, 5, 7, 8, 10 |
 | 20 | Second independent code review, dated 2026-09-26, recorded verbatim in `docs/reviews/`. The reviewer was given `src/` and `test/` only; `scripts/`, `package.json` and the lockfile were missing by mistake, so it ran 63 tests. Its markup-split token fragment reproduced against `7286195` and recorded as D-24, gating publication: the HTTP error body's 500-character cut runs before stripping, so a registered token split by markup comes back as a 28-character fragment redaction no longer recognizes. That makes R12's Session 19 decision, `README.md`'s token-redaction claim and Invariant 10 false; Invariant 10 marked VIOLATED. The review's other new findings added to D-13, D-14, D-16, D-17, D-19 and D-22; `"5junk"` and an unsafe integer as numeric settings, and a `Bearer` credential containing `:`, reproduced. R10's out-of-scope URL forms extended to `https:evil.example/x`, `//evil.example/x` and `mailto:leak@evil.example`. D-24 then fixed: `request()` in `src/client.js` no longer cuts an error body, so no text is cut before it has been redacted, stripped and redacted again; no bound was kept, since `TODOIST_MAX_FIELD_CHARS` has no upper limit (D-14). Decision recorded under R12, R16 amended, AD-4's amendment corrected. Test-first `926c798`, static-check fix `63e41d9`, implementation `d0ae2e5`. `test/d24-markup-split-token.test.js` places a markup-split token at every cut point on both paths, at every position inside it, with exact outputs; the four error-path tests failed against `7286195`'s code, and the two success-path tests passed before the fix, since that path never had the cut. Its static check for the bug class, text cut before it is stripped, flagged `src/client.js`'s cut and nothing else, and went red on five mutations of `src/`; one of them, `capOutput`'s result stripped through a variable, was missed at first and fixed in `63e41d9`. `926c798`'s message says 266 pass and 7 fail; the true figure at that commit is 267 and 6. Invariant 10 restored to HOLDS. D-24 left section 10; no defect gating publication remains. Coverage recorded for `d0ae2e5`. | Sections 4, 5, 7, 8, 10 |
+| 21 | Final pre-publication read of `README.md` against the code and this spec. `npm test` ran no tests on Node 22: `node --test test/` passes a directory, which Node 22 reads as a file path. The script now passes `test/*.test.js`; Node 20.20.2 and 22.22.2 run the same 273 tests, and CI runs both (`fd1b0d8`). Two findings fixed test-first. The server announced version 1.0.0 against `package.json`'s 0.1.0; recorded as R31, with `package-lock.json`'s stale 1.0.0 found by the same class check (test-first `6bd3b24` and `3c32872`, implementation `33b3439` and `8643ae8`). The `today` preset of `find-tasks-by-date` sends `today | overdue` and its description did not say so; recorded under R22 (test-first `6bd3b24`, implementation `33b3439`). Setext headings reproduced and recorded under D-15. Section 3's partial-batch non-goal widened from four write tools to all nine. MIT license added (`1795b4c`). Coverage recorded for `8643ae8`. | Sections 3, 7, 8, 9, 10 |
 
 ## 1. Purpose
 
@@ -124,11 +125,15 @@ support:
   beyond receiving a non-error HTTP status. Tools report `ok: true` on any
   non-throwing response; they do not diff the API's returned state against
   the caller's intent.
-- **No rollback of partial batch writes.** Any multi-item write tool
-  (`add-tasks`, `update-tasks`, `reschedule-tasks`, `add-comments`) that
-  fails partway through a batch leaves earlier items in the batch already
-  mutated on Todoist's side, with no compensating action and no report of
-  which items succeeded.
+- **No rollback of partial batch writes.** Every write tool takes a
+  batch and writes its items one request at a time: `add-tasks`,
+  `update-tasks`, `complete-tasks`, `uncomplete-tasks`,
+  `reschedule-tasks`, `add-comments`, `add-projects`, `add-sections` and
+  `add-labels`. One that fails partway through a batch leaves earlier
+  items in the batch already mutated on Todoist's side, with no
+  compensating action and no report of which items succeeded. Until
+  Session 21 this item named four of the nine; the other five take arrays
+  and write them the same way (`src/tools/write.js`).
 
 ## 4. Architecture Decisions
 
@@ -889,6 +894,24 @@ judgment.
   analytics, reminders, filters) must never be registered in either mode.
 - R20. Config-load failure and any uncaught startup/runtime error must
   write a redacted message to `stderr` (never `stdout`) and exit with code 1.
+- R31. The server announces to MCP clients the `name` and `version` in
+  `package.json`, read once when `src/server.js` loads. No version is
+  written as a literal in `src/`. The copies other files carry,
+  `server.json`'s `version` and `package-lock.json`'s root `version` and
+  `packages[""].version`, equal `package.json`'s.
+- **DECIDED, Session 21.** Found in the Session 21 README read:
+  `src/server.js` passed `name: 'todoist-mcp'` and `version: '1.0.0'` to
+  `McpServer`, while `package.json` and `server.json` said 0.1.0, so every
+  client was told 1.0.0. Regenerating the lockfile showed that it said
+  1.0.0 as well. Evidence: `test/server-version.test.js` spawns
+  `src/index.js` and reads the version the server announces during
+  initialization. For the bug class, a version declared somewhere other
+  than `package.json`, a static check fails on any `version:` key given a
+  string literal in `src/` and runs on a planted literal, and two checks
+  keep the `server.json` and `package-lock.json` copies equal. The
+  `server.json` check passed before the fix, because that copy was
+  correct; changing it to 0.1.1 turned the check red. Test-first
+  `6bd3b24` and `3c32872`, implementation `33b3439` and `8643ae8`.
 
 ### Read tools
 - R21. `find-tasks` must route a non-empty `query` to `/tasks/filter`; when
@@ -927,6 +950,20 @@ judgment.
   wherever it appears, not just on this field. The later session must
   search every schema in `src/` for that ordering and correct all
   occurrences together.
+- **DECIDED, Session 21.** The presets keep sending the filters they
+  send. `today` sends `today | overdue`, so it returns overdue tasks as
+  well as tasks due today; `next7days` sends `next 7 days` and `nodate`
+  sends `no date`. The description served over `tools/list` listed the
+  presets by name only, so an agent asking for `today` had no way to know
+  overdue tasks would come back. It now states the filter each preset
+  sends, and says the `today` preset includes overdue tasks. Behavior is
+  unchanged. Evidence: `test/find-tasks-by-date-preset-description.test.js`
+  reads the description over stdio, as R21's test does, and observes each
+  preset's filter by calling the tool with fetch stubbed. For the bug
+  class, a description that does not say what a preset sends, it requires
+  the filter of every preset in the served enum, verbatim, whenever it
+  differs from the preset's name, and runs that check on a planted
+  description. Test-first `6bd3b24`, implementation `33b3439`.
 - R23. `find-comments` must require exactly one of `task_id`/`project_id`,
   throwing otherwise.
 - R24. `get-overview` must fetch projects/sections/labels/tasks and the
@@ -1294,6 +1331,33 @@ the rise is the new `test/d24-markup-split-token.test.js`, at 99.76% /
 96.43% / 100.00%; its one uncovered line is the static check's fallback
 for a call that never closes.
 
+Session 21, at commit `8643ae8` (R31 and the R22 description fix),
+measured on Node v20.20.2 with `node --test --experimental-test-coverage
+test/*.test.js`, the files `npm test` now runs, which are the files
+`test/` gave:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 99.35% | 94.59% | 98.40% |
+
+All three figures are above the `d0ae2e5` row. `src/server.js` stays at
+100.00% on all three. `src/tools/read.js` is at 96.90% / 88.89% /
+100.00%; its lines moved from 96.88% only because the longer description
+added covered lines. A first version of the two new test files, amended
+before it was pushed, left branches at 94.23%: Node 20 counts test files,
+and optional chaining that never short-circuits and a push that only runs
+on failure were never taken. The tests were tightened, and each detector
+now also runs on a planted offender.
+
+Test command. Until Session 21, `npm test` was `node --test test/`. Node
+20 searches a directory argument for test files; Node 22 reads it as a
+file path, so on Node 22.22.2 the command failed with `Cannot find module
+.../test` and ran no tests. It is now `node --test test/*.test.js`, which
+the shell expands to the same files, and Node 20.20.2 and 22.22.2 ran the
+same 273 tests with identical names (`fd1b0d8`). CI runs both. The note
+below about Node 22 excluding test files from coverage still holds, so
+coverage comparisons stay on Node 20.
+
 Child-process coverage. `test/live-smoke-date-account-guard.test.js`
 runs `scripts/live-smoke-date.js` as a child process. When
 `NODE_V8_COVERAGE` is set, Node's `child_process` copies it into a
@@ -1371,7 +1435,7 @@ performed before a green contract test result is treated as evidence:
    partial-update semantics.
 
 Contract tests must live outside the `test/` directory, so that neither
-`npm test` (defined as `node --test test/`) nor the PostToolUse hook at
+`npm test` (defined as `node --test test/*.test.js`) nor the PostToolUse hook at
 `.claude/hooks/test-on-src-or-test-edit.sh` collects or triggers them. Live
 API calls must never fire as a side effect of editing a file.
 
@@ -1617,7 +1681,7 @@ setting that is not wholly a decimal integer, such as `5junk`, falls back
 to its default with that warning. Tests cover each case and fail against
 `04c46ec`, or against `7286195` for the second review's input.
 
-### D-15: The sanitizer misses lists and Unicode format characters
+### D-15: The sanitizer misses lists, setext headings and Unicode format characters
 
 **Does not gate publication.** Review property 14.
 
@@ -1627,6 +1691,11 @@ to its default with that warning. Tests cover each case and fail against
 |---|---|
 | `1. do this\n- and this` | unchanged |
 | `abc` U+202E `def` | unchanged; the right-to-left override survives |
+| `Title\n=====\nSub\n-----` | unchanged; both setext headings survive |
+
+The setext row was reproduced in Session 21 at `466c54f`, not by the
+review. `stripMarkup` spaces out `#`, so ATX headings are defanged, but
+it leaves `=` and `-` alone, so an underlined heading renders as one.
 
 The review's third input, the entity-encoded comment
 `a &lt;!-- IGNORE PRIOR --&gt; b`, was an instance of the D-6 bug class
@@ -1643,10 +1712,13 @@ characters are stripped". Only ASCII control characters are stripped.
 Unicode format characters (category Cf, including bidirectional
 overrides) are not.
 
+Session 21: `README.md`, "Markup stripping", said heading markup is
+defanged. Only ATX headings are; setext headings are not.
+
 **Fix criteria:** Unicode format characters are removed, with the set
-recorded under R10. Whether list markers are neutralized is decided and
-recorded under R10, which lists heading, table and blockquote markup but
-not lists.
+recorded under R10. Whether list markers and setext heading underlines
+are neutralized is decided and recorded under R10, which lists heading,
+table and blockquote markup but not lists.
 
 ### D-16: Structural fields are copied without type checks
 
