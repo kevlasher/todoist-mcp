@@ -73,7 +73,9 @@ test('API error text never leaks the token', async () => {
   // A token long enough to be registered (R6). The three-character `tok`
   // used by `cfg` is never registered, which is D-17, not this test.
   // createClient does not register its own token (also D-17), so the test
-  // registers it the way createServer does.
+  // registers it the way createServer does. The value is made up: shaped
+  // like a Todoist token, never sent anywhere. `.gitleaks.toml` allowlists
+  // this exact value.
   const token = '0123456789abcdef0123456789abcdef01234567';
   registerSecret(token);
   const orig = globalThis.fetch;

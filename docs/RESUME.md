@@ -6,24 +6,22 @@ last several sessions, start here.
 `docs/SPEC.md` is the source of truth for invariants, decisions, and known
 defects. This note is a pointer to it, not a substitute.
 
-This file is an internal working document, not published documentation.
-The personal deployment paths in section 2 are deliberate and stay; they
-help whoever resumes this work find the right directories on this
-machine.
+This file is the handoff note for cloud sessions and is published with
+the repository. Private deployment details are kept outside it.
 
 ## 1. Where things stand
 
 - Branch: work happens on a short-lived branch per cloud session, merged
   into `main` by pull request. `main` on `origin` is the source of truth.
-- Tests: 273/273 passing, under Node 20 (see section 8).
+- Tests: 273/273 passing, under Node 20 (see section 6).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 20 are complete; section 7 records Session 20.
+- Sessions 1 through 20 are complete; section 5 records Session 20.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
   Every defect gating publication is done: D-12, D-11, D-8, D-9, D-10,
   D-6, D-23 and, last, D-7 in Session 19, in test-first commit `37c29b6`
-  and implementation `1521d06` (section 7). D-13 through D-22 do not
+  and implementation `1521d06` (section 5). D-13 through D-22 do not
   gate publication and stay open.
 - CI is done. `.github/workflows/test.yml` runs `npm ci` and `npm test`
   under Node 20 on every push to `main` and every pull request, with
@@ -35,7 +33,7 @@ machine.
   2026-09-26 and kept verbatim at
   `docs/reviews/2026-09-26-independent-code-review.md`. Its one gating
   finding, D-24, a markup-split token fragment surviving
-  `src/client.js`'s 500-character error-body cut, is fixed (section 7).
+  `src/client.js`'s 500-character error-body cut, is fixed (section 5).
   Its other new findings were added to D-13, D-14, D-16, D-17, D-19 and
   D-22, which do not gate publication.
 - **Next: publication preparation.** Remaining steps, in order:
@@ -55,72 +53,24 @@ machine.
 
 Before doing anything else, confirm you're actually caught up rather than
 resuming stale state. A pinned commit hash drifts the moment anyone
-commits, so check content instead of a hash:
+commits, so check content instead of a hash. From the repository root:
 
-    cd /workspace/projects/Todoist-MCP
     git status --short
 
 - `git status --short` should print nothing.
 - `docs/SPEC.md`'s Decision log (top of the file) should have a row for
-  the most recent session recorded in section 7 below. If it doesn't,
+  the most recent session recorded in section 5 below. If it doesn't,
   that session's commits haven't landed on this branch.
-- Section 5 below should read "Session 9: closed." If it instead lists
+- Section 3 below should read "Session 9: closed." If it instead lists
   open "Remaining" work, you're looking at an older copy of this file.
-- Section 6 below should read as a closure note, a few sentences, not an
+- Section 4 below should read as a closure note, a few sentences, not an
   itemized claims list. If it's an itemized list, the README rewrite this
   file assumes happened hasn't happened on this branch.
 
 Any of those failing means: stop, reconcile with `origin`, and don't trust
 the rest of this file until they pass.
 
-## 2. The two copies, and how to tell them apart
-
-There are two directories that both look like "the Todoist MCP server."
-They are not the same thing and do not sync automatically.
-
-- `/workspace/projects/Todoist-MCP/` is the git repo. All remediation work
-  happens here. Identify it by the presence of `.git`.
-- `~/.todoist-mcp/` is the deployed copy the agent actually runs at
-  request time. No git history. Identify it by the presence of a `token`
-  file.
-
-Rule of thumb: **git means work, token means deployed.**
-
-The deployed copy now runs the remediated code. Only `src/` was copied.
-Its stale `scripts/` directory was deleted and is deliberately not
-redeployed. Its `README.md` is stale, still the old July version, and
-that is deliberate: nothing reads it, it isn't published, and no future
-session should treat updating it as work.
-
-Deployment is a manual file copy. Nothing propagates automatically.
-
-There was a second, smaller instance of the same problem. An agent
-definition existed at both `.claude/agents/todoist.md` in this repo and
-`/workspace/projects/agent-os/.claude/agents/todoist.md`, byte-identical
-and unedited since July 21. AD-5 resolves this and is now written into
-`docs/SPEC.md` section 4. The repo copy is a labeled example at
-`docs/examples/todoist-subagent.md`, with an explanatory
-`docs/examples/README.md` beside it; it uses placeholder paths, carries
-no personal identifiers, and launches read-only by omitting
-`TODOIST_READONLY` entirely rather than setting it to `"true"`.
-`.claude/agents/todoist.md` no longer exists in this repo. The live
-definition remains in whatever project consumes this server, outside
-this repo's scope.
-
-## 3. Deployment procedure
-
-When it's time to ship this branch's work to the running server:
-
-1. Back up the deployed copy:
-   `cp -a ~/.todoist-mcp ~/.todoist-mcp.backup-$(date +%Y%m%d)`
-2. Copy `src/` from the repo into the deployed copy. Do not touch the
-   `token` file. Do not copy `scripts/` or `test-contract/`.
-3. Restart the agent and run a real Todoist request through it to verify.
-4. **Delete the backup the same day**, once verified. It is deployment
-   insurance, not an archive. A stale backup directory containing a live
-   token becomes its own hazard.
-
-## 4. Code that touches a live account
+## 2. Code that touches a live account
 
 Three places in this repo can write to a real Todoist account. All three
 are guarded by `test-contract/account-guard.js`: before any other
@@ -157,7 +107,7 @@ the machine.
 `README.md`'s Tests section lists all three paths with their
 invocations, and its Layout block includes `scripts/live-smoke-date.js`.
 
-## 5. Session 9: closed
+## 3. Session 9: closed
 
 Objective: reconcile `README.md` and the agent definition with what AD-1
 established, and resolve the open items and deferred decisions that gate
@@ -194,7 +144,7 @@ publishing.
   from a different source: it came from reading `src/shape.js` directly,
   not from resolving a `[DECISION NEEDED]` item in section 7.
 - **Claims analysis complete** for `README.md` and the agent definition.
-  The claims list itself has since been retired — see section 6.
+  The claims list itself has since been retired — see section 4.
 - **AD-5 is written into `docs/SPEC.md` section 4.**
 - **The example agent definition now lives at
   `docs/examples/todoist-subagent.md` with an explanatory
@@ -207,9 +157,9 @@ publishing.
   with `server.json`.
 - **The Session 8 open items in `docs/SPEC.md` section 9 are closed.**
   Item 1 (`UNTRUSTED_NOTICE` scope) is answered by AD-4. Item 2 (whether
-  other consumers parse tool output as bare JSON) is recorded as an
-  Agent OS handoff and closed there.
-- **`README.md` rewritten** against the claims list that was in section 6,
+  other consumers parse tool output as bare JSON) is recorded as a
+  handoff to the project that consumes this server and closed there.
+- **`README.md` rewritten** against the claims list that was in section 4,
   and merged (PR #1: `b376373`, `45dc2af`; follow-up fixes in PR #2:
   `b9c570b`). Verified directly against the live file: every False,
   Understated, Missing, and Also item the claims list raised is addressed
@@ -220,12 +170,12 @@ publishing.
 Both items previously listed under "Remaining" are done. Session 9 has no
 open items.
 
-## 6. README and agent-definition claims — resolved
+## 4. README and agent-definition claims — resolved
 
 Session 9 produced a claims list here (False / Understated / Missing /
 Also-broken items found by comparing `README.md` and the agent definition
 against `docs/SPEC.md`). That list was the direct input to the README
-rewrite referenced in section 5. It has been verified, item by item,
+rewrite referenced in section 3. It has been verified, item by item,
 against the current `README.md` and found fully addressed: nothing on it
 describes the published README any longer.
 
@@ -235,7 +185,7 @@ a future reader to mistake pre-rewrite README text for current text. If
 README drift is suspected later, re-diff `README.md` against `docs/SPEC.md`
 directly; don't try to revive this one.
 
-## 7. Session 10 and beyond
+## 5. Session 10 and beyond
 
 Superseded on 2026-09-24: the independent code review found seven new
 defects that gate publication, D-6 through D-12 (see section 1). The
@@ -473,10 +423,10 @@ defect rather than a code defect:
   default.
 
 Tracked elsewhere, not in this repo: per-request read/write mode selection
-(AD-1), whether two copies of this server should exist, and whether
-anything else in Agent OS parses this server's output as bare JSON.
+(AD-1), and whether anything else in the project that consumes this server
+parses its output as bare JSON.
 
-## 8. Method
+## 6. Method
 
 Unchanged, and worth restating because it is what caught the vacuous
 assertion:

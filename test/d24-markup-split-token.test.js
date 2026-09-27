@@ -46,7 +46,8 @@ const suffix = (cap) =>
 const FIELD_CUT = ' …[truncated]';
 
 // A 40-character hex token, the form Todoist issues. D-24's reproduction
-// token.
+// token. Made up: shaped like a Todoist token, never sent anywhere.
+// `.gitleaks.toml` allowlists this exact value.
 const TOKEN = '7c1e9a40d3b85f26e1a0c94b7d2f58e3a6b1c0d9';
 // The token split by empty markup that stripping removes: 47 characters.
 const SPLIT = TOKEN.slice(0, 20) + '<b></b>' + TOKEN.slice(20);

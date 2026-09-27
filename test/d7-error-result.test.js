@@ -41,7 +41,9 @@ const framed = (s) => `${FRAME_OPEN}${s}${FRAME_CLOSE}`;
 const suffix = (cap) =>
   `\n\n…[output truncated at ${cap} characters to bound context; refine your query or narrow the request]`;
 
-// A 40-character hex token, the form Todoist issues.
+// A 40-character hex token, the form Todoist issues. Made up: shaped like
+// a Todoist token, never sent anywhere. `.gitleaks.toml` allowlists this
+// exact value.
 const TOKEN = '7c1e9a40d3b85f26e1a0c94b7d2f58e3a6b1c0d9';
 // The shortest token prefix that counts as a leak. Nothing else in these
 // outputs contains it.

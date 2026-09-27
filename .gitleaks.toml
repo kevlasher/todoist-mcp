@@ -1,0 +1,20 @@
+# gitleaks configuration. Pinned to gitleaks v8.30.1
+# (github.com/zricethezav/gitleaks/v8, commit 8d1f98c).
+#
+# Extends gitleaks' default rules and allowlists three made-up test tokens
+# by exact value. They are shaped like Todoist tokens and never sent
+# anywhere. The allowlist matches values, not paths, so any other secret
+# placed in the same test files is still reported.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Made-up test tokens shaped like Todoist tokens"
+regexTarget = "secret"
+regexes = [
+  # test/d7-error-result.test.js and test/d24-markup-split-token.test.js
+  '''^7c1e9a40d3b85f26e1a0c94b7d2f58e3a6b1c0d9$''',
+  # test/client.test.js
+  '''^0123456789abcdef0123456789abcdef01234567$''',
+]
