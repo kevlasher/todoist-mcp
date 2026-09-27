@@ -34,7 +34,7 @@ Maintenance: one row per session, added when the session ends.
 | 18 | D-23 recorded and fixed. A character reference the decoder does not know (`http&colon;//evil.example/p`), or one a single decoding round leaves behind (`&amp;lt;!-- x --&amp;gt;`), passed through `stripMarkup` as text, so a renderer that decodes entities saw a URL or a comment. Session 17 had recorded it under D-15; it became D-23, gating publication, because it made `README.md`'s claim that nothing clickable or re-parseable reaches the agent false. `stripMarkup`'s last pass, after the URL defang, now replaces the `&` of every remaining semicolon-terminated character reference with `[&]`; decoding is unchanged. Decision recorded under R10, with why semicolon-less legacy names are out of scope and that bare domain names are left as written. Test-first `978e7ec`, implementation `6b75483`; `7da6b63` restored one test file's line coverage. `test/d23-character-reference.test.js` checks exact outputs and a `find-tasks` run. The generative check in `test/d6-url-defang-order.test.js` also asserts that no character reference survives, now over 12974 inputs. Its static check now requires the character-reference break as `stripMarkup`'s last pass with the URL defang immediately before it, and went red when the break was moved ahead of the defang and when it was removed. `README.md`, Invariant 4 and R10 narrowed to the URL forms defended. D-15 narrowed; D-23 left section 10. Coverage recorded for `6b75483`. | Sections 5, 7, 8, 10 |
 | 19 | D-7 fixed: `buildResult`'s error branch passes the message through `safeField`, so it is redacted, stripped, defanged and fenced, then caps the whole with `capOutput` and prefixes `UNTRUSTED_NOTICE`; `isError` stays true. Decision recorded under R25; AD-4 amended so the notice is unconditional on error results too. The success path cut text before redacting it, the same bug class, and was fixed with it: `redactThenCut` in `src/redact.js` is the only code in `src/` that cuts text and redacts first, `safeField` redacts before stripping, and `buildResult` redacts last; recorded under R12. Test-first `37c29b6`, implementation `1521d06`. `test/d7-error-result.test.js` checks D-7's reproduction input as an exact string, every tool in `tools/list` and three other error sources, a token cut by each cap on both paths, and a static check that found `src/sanitize.js`'s two caps, its unredacted `stripMarkup` call and `src/client.js`'s correctly ordered but separate cut. Errors the MCP SDK returns before a handler runs recorded as D-7's known limit. Invariants 1, 2 and 4 restored to HOLDS for every result `buildResult` builds, and qualified with that limit, as are 3 and 12. `README.md`'s "No open defect affects tool output" reworded, since D-13 to D-17 do. D-7 left section 10; no defect gating publication remains. Coverage recorded for `1521d06`. | Sections 4, 5, 7, 8, 10 |
 | 20 | Second independent code review, dated 2026-09-26, recorded verbatim in `docs/reviews/`. The reviewer was given `src/` and `test/` only; `scripts/`, `package.json` and the lockfile were missing by mistake, so it ran 63 tests. Its markup-split token fragment reproduced against `7286195` and recorded as D-24, gating publication: the HTTP error body's 500-character cut runs before stripping, so a registered token split by markup comes back as a 28-character fragment redaction no longer recognizes. That makes R12's Session 19 decision, `README.md`'s token-redaction claim and Invariant 10 false; Invariant 10 marked VIOLATED. The review's other new findings added to D-13, D-14, D-16, D-17, D-19 and D-22; `"5junk"` and an unsafe integer as numeric settings, and a `Bearer` credential containing `:`, reproduced. R10's out-of-scope URL forms extended to `https:evil.example/x`, `//evil.example/x` and `mailto:leak@evil.example`. D-24 then fixed: `request()` in `src/client.js` no longer cuts an error body, so no text is cut before it has been redacted, stripped and redacted again; no bound was kept, since `TODOIST_MAX_FIELD_CHARS` has no upper limit (D-14). Decision recorded under R12, R16 amended, AD-4's amendment corrected. Test-first `926c798`, static-check fix `63e41d9`, implementation `d0ae2e5`. `test/d24-markup-split-token.test.js` places a markup-split token at every cut point on both paths, at every position inside it, with exact outputs; the four error-path tests failed against `7286195`'s code, and the two success-path tests passed before the fix, since that path never had the cut. Its static check for the bug class, text cut before it is stripped, flagged `src/client.js`'s cut and nothing else, and went red on five mutations of `src/`; one of them, `capOutput`'s result stripped through a variable, was missed at first and fixed in `63e41d9`. `926c798`'s message says 266 pass and 7 fail; the true figure at that commit is 267 and 6. Invariant 10 restored to HOLDS. D-24 left section 10; no defect gating publication remains. Coverage recorded for `d0ae2e5`. | Sections 4, 5, 7, 8, 10 |
-| 21 | Final pre-publication read of `README.md` against the code and this spec. `npm test` ran no tests on Node 22: `node --test test/` passes a directory, which Node 22 reads as a file path. The script now passes `test/*.test.js`; Node 20.20.2 and 22.22.2 run the same 273 tests, and CI runs both (`fd1b0d8`). Two findings fixed test-first. The server announced version 1.0.0 against `package.json`'s 0.1.0; recorded as R31, with `package-lock.json`'s stale 1.0.0 found by the same class check (test-first `6bd3b24` and `3c32872`, implementation `33b3439` and `8643ae8`). The `today` preset of `find-tasks-by-date` sends `today | overdue` and its description did not say so; recorded under R22 (test-first `6bd3b24`, implementation `33b3439`). Setext headings reproduced and recorded under D-15. Section 3's partial-batch non-goal widened from four write tools to all nine. MIT license added (`1795b4c`). Coverage recorded for `8643ae8`. | Sections 3, 7, 8, 9, 10 |
+| 21 | Final pre-publication read of `README.md` against the code and this spec. `npm test` ran no tests on Node 22: `node --test test/` passes a directory, which Node 22 reads as a file path. The script now passes `test/*.test.js`; Node 20.20.2 and 22.22.2 run the same 273 tests, and CI runs both (`fd1b0d8`). Two findings fixed test-first. The server announced version 1.0.0 against `package.json`'s 0.1.0; recorded as R31, with `package-lock.json`'s stale 1.0.0 found by the same class check (test-first `6bd3b24` and `3c32872`, implementation `33b3439` and `8643ae8`). The `today` preset of `find-tasks-by-date` sends `today | overdue` and its description did not say so; recorded under R22 (test-first `6bd3b24`, implementation `33b3439`). Setext headings reproduced and recorded under D-15. Section 3's partial-batch non-goal widened from four write tools to all nine. MIT license added (`1795b4c`). `README.md` corrected against the code and this spec, with the claims D-13, D-15, D-17 and D-21 made false now stated as limits; `SECURITY.md` added. Coverage recorded for `8643ae8`. | Sections 3, 7, 8, 9, 10 |
 
 ## 1. Purpose
 
@@ -1641,7 +1641,10 @@ Fixed in Session 12, `6a99b01`, by making both tests assert the property they na
   units, so it can split a surrogate pair, as `safeField`'s can.
 
 **Claim this makes false:** `README.md`, "Output-size caps": every
-response "is capped in total size".
+response "is capped in total size". Corrected in Session 21: `README.md`
+now says the output cap cuts the serialized body and that the notice,
+the truncation note and an open fence can take a response past it, and
+names this entry.
 
 **Fix criteria:** decide whether the caps are total bounds or prefix
 bounds, and make `README.md` and R11/R12 say which. Truncation never
@@ -1710,7 +1713,8 @@ semicolon-terminated character reference now leaves `stripMarkup`.
 **Claims this makes false:** `README.md`, "Markup stripping": "control
 characters are stripped". Only ASCII control characters are stripped.
 Unicode format characters (category Cf, including bidirectional
-overrides) are not.
+overrides) are not. Corrected in Session 21, together with the setext
+heading claim: `README.md` now names both limits and this entry.
 
 Session 21: `README.md`, "Markup stripping", said heading markup is
 defanged. Only ATX headings are; setext headings are not.
@@ -1792,6 +1796,9 @@ what each becomes is recorded here.
 substrings" are redacted. The scheme word is replaced and the value
 survives. `README.md`, "Token redaction": `Authorization:` material "is
 redacted generically". Invariants 9 and 10 are qualified in the table.
+Corrected in Session 21: `README.md` now says tokens under 4 characters,
+JSON-escaped tokens, `Basic` credentials and Bearer values containing
+`:` are not fully redacted, and names this entry.
 
 **Fix criteria:** `loadConfig` rejects a token too short to register, or
 registration accepts every token the config holds. Escaped forms of each
@@ -1902,8 +1909,10 @@ under R3/R4, and make the comment match what the code does.
   without asserting success, so it can print its success conclusion over
   tool errors.
 - `scripts/stdio-check.js` prints the tool list and asserts nothing.
-  `README.md` says it confirms "the read-only vs. read/write split"; a
-  person reading the output does that, not the script.
+  `README.md` said it confirms "the read-only vs. read/write split"; a
+  person reading the output does that, not the script. Corrected in
+  Session 21: `README.md` says it asserts nothing, and that the live
+  paths' account guard shows an id match, not a disposable account.
 - `scripts/live-smoke-date.js`'s header says it "proves the date path"
   through `/tasks/filter`. It prints the recorded paths and does not
   assert them.
