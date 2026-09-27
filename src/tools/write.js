@@ -1,9 +1,10 @@
 /**
  * Write tools: registered ONLY when TODOIST_READONLY=false.
  *
- * When read-only, this module's registerWriteTools is never called, so these
- * tools do not exist in the process (server-layer separation, not a client-side
- * hide). See src/index.js and the README.
+ * This module is imported in every mode. When read-only, its
+ * registerWriteTools is never called, so none of these tools is registered
+ * (server-layer separation, not a client-side hide). See src/server.js,
+ * src/index.js and docs/SPEC.md, D-19.
  *
  * Deliberately EXCLUDED in every mode (never implemented here): delete-object,
  * manage-assignments, workspace/analytics tools, reorder/move, reminders,

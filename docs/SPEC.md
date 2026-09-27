@@ -1076,8 +1076,11 @@ judgment.
 - R28. `add-comments` must require exactly one of `task_id`/`project_id` per
   comment.
 - **DECIDED, Session 9.** Add partial-success reporting to the multi-item
-  write tools (`add-tasks`, `update-tasks`, `reschedule-tasks`,
-  `add-comments`). Do not add automatic retry: these writes are not
+  write tools, which are all nine, as section 3 lists them: `add-tasks`,
+  `update-tasks`, `complete-tasks`, `uncomplete-tasks`,
+  `reschedule-tasks`, `add-comments`, `add-projects`, `add-sections` and
+  `add-labels`. Session 9 named four of them; the list was widened in
+  Session 21. Do not add automatic retry: these writes are not
   idempotent, and if `add-tasks` fails partway the caller often cannot tell
   whether the failing item was created before the error, so retrying risks
   duplicates. `update-tasks` is safer to reapply, but giving retry-safe and
@@ -1852,9 +1855,12 @@ not have that check yet.
   this: writes register "when `cfg.readOnly` is falsy". Invariants 6 and
   8 are qualified in the table. Second review: `readOnly: null` and
   `readOnly: 0` do the same, by the same condition.
-- By reading. `src/server.js`'s header says that in read-only mode "the
+- By reading. `src/server.js`'s header said that in read-only mode "the
   write module is never imported/called". It is imported statically in
-  every mode; it is only not called.
+  every mode; it is only not called. Corrected in Session 21: the header
+  of `src/server.js`, and the matching claim in `src/tools/write.js`'s
+  header that the tools "do not exist in the process", now say the module
+  is imported in every mode and only its registration is conditional.
 - By reading. `createClient().request()` accepts any method and path, and
   has no read-only check. `test-contract/update-task-partial.contract.js`
   sends a `DELETE` directly with `fetch` to clean up. Section 1 says

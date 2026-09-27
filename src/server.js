@@ -3,10 +3,14 @@
  * tests can build a server and inspect exactly which tools got registered,
  * without opening a transport.
  *
- * The env-gated read-only decision happens HERE, once, at construction: when
- * cfg.readOnly is true the write module is never imported/called, so write
- * tools do not exist in the process. This is the server-layer read/write
- * separation described in the connections architecture (Invariant I1).
+ * The env-gated read-only decision happens HERE, once, at construction. The
+ * write module is imported in every mode; only its registration is
+ * conditional. When cfg.readOnly is truthy, registerWriteTools is never
+ * called, so no write tool is registered and a client can neither list nor
+ * call one. The condition is `!cfg.readOnly`, so a config that omits
+ * readOnly registers them; src/index.js always passes loadConfig's boolean
+ * (docs/SPEC.md, D-19). This is the server-layer read/write separation
+ * (Invariant 8).
  */
 import { readFileSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
