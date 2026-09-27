@@ -105,7 +105,7 @@ test('read tool output is framed and strips markup; token never leaks', async ()
   }
 });
 
-test('a registered secret appearing in normal (non-error) API content never leaks — read tool (Invariant 10)', async () => {
+test('a registered secret appearing in normal (non-error) API content never leaks: read tool (Invariant 10)', async () => {
   const SECRET = 'success-path-secret-333333';
   registerSecret(SECRET);
   const orig = globalThis.fetch;
@@ -137,7 +137,7 @@ test('a registered secret appearing in normal (non-error) API content never leak
 });
 
 test('write tool echoes framed/stripped/capped content, exactly as a read tool would (update-tasks, Invariant 12/2)', async () => {
-  // update-tasks body omits `content` entirely — the echoed content below comes
+  // update-tasks body omits `content` entirely; the echoed content below comes
   // solely from the (mocked) Todoist API response, not from anything the
   // caller supplied in this call.
   const testCfg = cfg({ readOnly: false, maxFieldChars: 2000 });
@@ -179,12 +179,12 @@ test('write tool echoes framed/stripped/capped content, exactly as a read tool w
   }
 });
 
-test('a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — read tool', async () => {
+test('a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret: read tool', async () => {
   const SECRET = 'plain-error-secret-read-111111';
   registerSecret(SECRET);
   const orig = globalThis.fetch;
   // res.ok === true takes the un-try/catch-guarded `await res.text()` path in
-  // client.js — throwing here yields a plain Error, not a TodoistApiError.
+  // client.js; throwing here yields a plain Error, not a TodoistApiError.
   globalThis.fetch = async () => ({
     ok: true,
     status: 200,
@@ -207,7 +207,7 @@ test('a plain Error (not TodoistApiError) thrown mid-handler never leaks the reg
   }
 });
 
-test('a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret — write tool', async () => {
+test('a plain Error (not TodoistApiError) thrown mid-handler never leaks the registered secret: write tool', async () => {
   const SECRET = 'plain-error-secret-write-222222';
   registerSecret(SECRET);
   const orig = globalThis.fetch;

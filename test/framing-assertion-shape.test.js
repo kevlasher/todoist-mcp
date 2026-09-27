@@ -22,7 +22,7 @@ function listJsFiles(dir) {
 // The forbidden idiom is a positive `.includes(...)` call against one of the
 // untrusted-value fence markers exported from src/sanitize.js. Both the call
 // syntax and the marker names are assembled by concatenation, so the exact
-// idiom text this test hunts for never appears contiguously in this file —
+// idiom text this test hunts for never appears contiguously in this file,
 // belt and braces alongside excluding this filename from the scan below, so
 // this test cannot flag itself even if one of the two safeguards slips.
 const MARKER_OPEN_NAME = 'FRAME' + '_OPEN';

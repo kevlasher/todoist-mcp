@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
  * every request and answers GET /user with the id this test chooses.
  *
  * The stub is written to a temporary directory rather than kept under test/,
- * so `node --test test/` never collects it as a test file.
+ * so `npm test` never collects it as a test file.
  */
 
 const __filename = fileURLToPath(import.meta.url);

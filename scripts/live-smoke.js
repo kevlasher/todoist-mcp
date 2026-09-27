@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * LIVE smoke test — runs only against the verified contract test account.
+ * LIVE smoke test: runs only against the verified contract test account.
  * It never touches a real/personal Todoist account: the account guard is
  * checked before anything else, and the token it uses for every subsequent
  * call is the same contract-test token that guard just verified, not
@@ -30,7 +30,7 @@ function textOf(res) {
 
 /**
  * Every tool response text carries a leading untrusted-content notice
- * (UNTRUSTED_NOTICE, src/sanitize.js) before the JSON payload — see
+ * (UNTRUSTED_NOTICE, src/sanitize.js) before the JSON payload; see
  * src/result.js. Locate the JSON object by its outermost braces rather than
  * assuming a fixed prefix length or hardcoded notice string, so this keeps
  * working if that notice's wording or length ever changes. Used everywhere
@@ -57,12 +57,12 @@ async function main() {
   const account = await verifyContractTestAccount();
   console.log(`Verified contract test account: id ${account.id}`);
 
-  // Use the contract-test token for everything below, not TODOIST_API_KEY —
+  // Use the contract-test token for everything below, not TODOIST_API_KEY:
   // the account just verified above must be the account every subsequent
   // call actually runs against. Both real-environment token inputs are
   // stripped before loadConfig sees this env, so this guarantee doesn't
   // depend on config.js's TODOIST_API_KEY-beats-TODOIST_API_KEY_FILE
-  // priority rule staying correct — removing both inputs makes it
+  // priority rule staying correct; removing both inputs makes it
   // unconditional rather than order-dependent.
   const smokeEnv = { ...process.env, TODOIST_API_KEY: process.env.TODOIST_CONTRACT_TEST_TOKEN };
   delete smokeEnv.TODOIST_API_KEY_FILE;

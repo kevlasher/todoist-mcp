@@ -4,7 +4,7 @@
  *
  * Unlike scripts/live-smoke.js (which exercises the plain /tasks list via
  * find-tasks), this script proves the date path, which routes through the
- * unified API's dedicated filter endpoint /api/v1/tasks/filter — a DISTINCT
+ * unified API's dedicated filter endpoint /api/v1/tasks/filter, a DISTINCT
  * endpoint from /tasks. A passing find-tasks smoke test does not prove this.
  *
  * It runs only against the verified contract test account, as
@@ -171,7 +171,7 @@ async function main() {
     }
     console.log('');
   } finally {
-    // 4) cleanup — always runs so no active residue is left ------------------
+    // 4) cleanup: always runs so no active residue is left ------------------
     if (taskId) {
       console.log(`4) cleanup: complete-tasks [${taskId}]`);
       try {
@@ -190,7 +190,7 @@ async function main() {
             failures.push({ step: 'cleanup:verify', note: `expected 0 active, got ${residue}` });
           } else {
             console.log(
-              '     (the task remains in Todoist completed-history; there is no delete tool by design — remove it manually if desired)'
+              '     (the task remains in Todoist completed-history; there is no delete tool by design; remove it manually if desired)'
             );
           }
         }
@@ -219,10 +219,10 @@ async function main() {
   console.log(`\nToday-due task found in "today": ${foundToday ? 'YES' : 'NO'}`);
   console.log(`Cleanup: ${taskId ? 'attempted (see above)' : 'n/a'}`);
   if (failures.length === 0) {
-    console.log('\nRESULT: PASS — every filter routed to /api/v1/tasks/filter with a 2xx, task found and cleaned up.');
+    console.log('\nRESULT: PASS. Every filter routed to /api/v1/tasks/filter with a 2xx, task found and cleaned up.');
     process.exit(0);
   } else {
-    console.log(`\nRESULT: FAIL — ${failures.length} issue(s):`);
+    console.log(`\nRESULT: FAIL, ${failures.length} issue(s):`);
     for (const f of failures) console.log('  -', JSON.stringify(f));
     process.exit(1);
   }

@@ -1,5 +1,5 @@
 /**
- * Read tools — registered in ALL modes (read-only and read/write).
+ * Read tools: registered in ALL modes (read-only and read/write).
  *
  * Tool → Todoist API v1 REST mapping (documented in README):
  *   find-tasks         GET /tasks           | GET /tasks/filter?query=
@@ -152,10 +152,12 @@ export function registerReadTools(server, client, cfg) {
     {
       title: 'Find tasks by date',
       description:
-        'Find active tasks by due date. Use `preset` for common views ' +
-        '(today, overdue, next7days, nodate, recurring) or supply a `date` (YYYY-MM-DD ' +
-        'or natural language like "next monday") with `comparison` (on | before | after). ' +
-        'Implemented via GET /tasks/filter.',
+        'Find active tasks by due date. Use `preset` for a common view, or supply a `date` ' +
+        '(YYYY-MM-DD or natural language like "next monday") with `comparison` ' +
+        '(on | before | after). Each preset sends a Todoist filter: today sends ' +
+        '"today | overdue", so it includes overdue tasks as well as tasks due today; ' +
+        'overdue sends "overdue"; next7days sends "next 7 days"; nodate sends "no date"; ' +
+        'recurring sends "recurring". Implemented via GET /tasks/filter.',
       inputSchema: {
         preset: z
           .enum(['today', 'overdue', 'next7days', 'nodate', 'recurring'])

@@ -1,5 +1,5 @@
 /**
- * Contract-test account guard — standalone, no imports from src/.
+ * Contract-test account guard: standalone, no imports from src/.
  *
  * Confirms TODOIST_CONTRACT_TEST_TOKEN belongs to the expected throwaway
  * account (TODOIST_CONTRACT_TEST_ACCOUNT_ID) before any contract test is
@@ -8,7 +8,7 @@
  * GET /api/v1/user returns live credentials in `token` and `websocket_url`.
  * This module reads only `id` and `email` off that response and must never
  * let the rest of the body reach a log line, thrown message, or return
- * value — including on error paths. No logger is used here; nothing in
+ * value, including on error paths. No logger is used here; nothing in
  * this file writes to stdout/stderr on its own.
  */
 

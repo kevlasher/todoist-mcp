@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Contract test — POST /tasks/{id} partial-update semantics.
+ * Contract test: POST /tasks/{id} partial-update semantics.
  *
  * Verifies, against the live Todoist API, the premise behind security
  * review Finding 1 / SPEC.md Invariant discussion: that update-tasks sends
@@ -8,8 +8,8 @@
  * task state (including fields the request never sent), not just an echo
  * of what was sent.
  *
- * Not collected by `node --test test/` (lives outside test/, and its name
- * doesn't match a *.test.js pattern anyway). Not wired into npm test. Run
+ * Not collected by `npm test`, which runs only test/*.test.js (this file
+ * lives outside test/, and its name doesn't match that pattern anyway). Run
  * directly:
  *
  *   TODOIST_CONTRACT_TEST_TOKEN=xxx TODOIST_CONTRACT_TEST_ACCOUNT_ID=yyy \
@@ -38,7 +38,7 @@ async function main() {
   };
 
   // Step 2: build the update body and verify its shape BEFORE sending
-  // anything. Must contain exactly 'priority' and nothing else —
+  // anything. Must contain exactly 'priority' and nothing else,
   // in particular, not 'content'.
   const updateBody = { priority: 4 };
   const updateKeys = Object.keys(updateBody);
@@ -102,7 +102,7 @@ async function main() {
     }
     if (extraKeys.length === 0) {
       failures.push(
-        'response contained no fields beyond what was sent — expected untouched fields (e.g. content) to come back too'
+        'response contained no fields beyond what was sent; expected untouched fields (e.g. content) to come back too'
       );
     }
     if (updated.priority !== updateBody.priority) {
@@ -127,12 +127,12 @@ async function main() {
           headers,
         });
         if (!delRes.ok) {
-          console.log(`CLEANUP FAILED (status ${delRes.status}) — remove task ${taskId} by hand.`);
+          console.log(`CLEANUP FAILED (status ${delRes.status});  remove task ${taskId} by hand.`);
         } else {
           console.log(`Cleaned up task ${taskId}.`);
         }
       } catch {
-        console.log(`CLEANUP FAILED (network error) — remove task ${taskId} by hand.`);
+        console.log(`CLEANUP FAILED (network error);  remove task ${taskId} by hand.`);
       }
     }
   }
@@ -140,7 +140,7 @@ async function main() {
 
 main().catch((err) => {
   // Only reachable for failures before task creation (account guard,
-  // request-body verification) — nothing to clean up in that case.
+  // request-body verification); nothing to clean up in that case.
   console.log(`FAIL: ${err.message}`);
   process.exitCode = 1;
 });

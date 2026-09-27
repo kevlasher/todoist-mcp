@@ -18,8 +18,8 @@ function listJsFiles(dir) {
 }
 
 /**
- * Detect the SHAPE of an MCP tool result object literal — an object with a
- * `content` array whose element(s) declare `type: 'text'` — rather than
+ * Detect the SHAPE of an MCP tool result object literal (an object with a
+ * `content` array whose element(s) declare `type: 'text'`) rather than
  * matching a literal function name like `readResult`/`writeResult`. This is
  * the wire shape every one of the sixteen tools must return (success or
  * `isError`), per Invariant 12. A regex, not an AST parse, but scoped tightly
