@@ -11,9 +11,10 @@
  *
  * Bug class: a version for this server declared somewhere other than
  * package.json. The static test fails on any `version:` key given a string
- * literal in src/, and on a server.json whose version differs from
- * package.json. server.json is a separate document the MCP Registry reads,
- * so it must carry its own copy; the check keeps the copy equal.
+ * literal in src/, and on a server.json or package-lock.json whose version
+ * differs from package.json. server.json is a separate document the MCP
+ * Registry reads, and npm writes the lockfile's copy, so each carries its own;
+ * the checks keep the copies equal.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -80,4 +81,10 @@ test('the version-literal check flags a planted literal and passes a read from p
 test('server.json version equals package.json', () => {
   const serverJson = JSON.parse(readFileSync(join(ROOT, 'server.json'), 'utf8'));
   assert.equal(serverJson.version, PKG.version, 'server.json version must equal package.json');
+});
+
+test('package-lock.json root version equals package.json', () => {
+  const lock = JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8'));
+  assert.equal(lock.version, PKG.version, 'package-lock.json version must equal package.json');
+  assert.equal(lock.packages[''].version, PKG.version, 'lockfile root package version');
 });
