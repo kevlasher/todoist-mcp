@@ -177,8 +177,9 @@ These affect tool output:
 - D-15: the sanitizer misses lists, setext headings and Unicode format characters.
 - D-16: structural fields are copied from Todoist without type checks.
 - D-17: redaction misses short tokens, escaped tokens and Basic credentials.
+- D-18: tool input validation is looser than the tool descriptions, and `find-tasks-by-date` returns the caller's `date` unframed in its `filter` field.
 
-The rest do not. D-4 is a startup configuration error message that names the wrong environment variable in some cases; it's noted under Configuration below, since it affects an operator's setup error, not tool output an agent or caller ever sees. D-18 to D-22 concern input validation, internal boundaries, the token file's permissions, the live scripts and test evidence.
+The rest do not. D-4 is a startup configuration error message that names the wrong environment variable in some cases; it's noted under Configuration below, since it affects an operator's setup error, not tool output an agent or caller ever sees. D-19 to D-22 concern internal boundaries, the token file's permissions, the live scripts and test evidence.
 
 ---
 
