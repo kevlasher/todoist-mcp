@@ -355,7 +355,7 @@ function fetchViolations(files) {
     const aliasRe = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:globalThis\.|global\.|self\.)?fetch\b(?!\s*\()/g;
     let m;
     while ((m = aliasRe.exec(code))) aliases.push(m[1]);
-    const callees = ['fetch', ...aliases].map((n) => n.replace(/\$/g, '\\$')).join('|');
+    const callees = ['fetch', ...aliases].map((n) => n.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')).join('|');
     const callRe = new RegExp(`(?<![\\w$])(${callees})\\s*(?:\\.\\s*(?:call|apply|bind)\\s*)?\\(`, 'g');
     while ((m = callRe.exec(code))) {
       if (inHelper(m.index)) continue;
