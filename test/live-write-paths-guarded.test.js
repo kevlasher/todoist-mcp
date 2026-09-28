@@ -16,7 +16,8 @@ import { fileURLToPath } from 'node:url';
  * such a file.
  *
  * A textual check, not an AST parse. With comments removed, the first call to
- * the guard must come before the first call to fetch, loadConfig,
+ * the guard must come before the first call to fetch, fetchWithFixedError
+ * (the helper every request there goes through since D-21), loadConfig,
  * createServer or callTool.
  */
 
@@ -27,7 +28,13 @@ const LIVE_DIRS = ['scripts', 'test-contract'];
 // Assembled by concatenation so this file never contains the idioms it
 // hunts for.
 const GUARD_CALL = 'verifyContract' + 'TestAccount(';
-const REQUEST_CALLS = ['fetch(', 'load' + 'Config(', 'create' + 'Server(', 'call' + 'Tool('];
+const REQUEST_CALLS = [
+  'fetch(',
+  'fetchWith' + 'FixedError(',
+  'load' + 'Config(',
+  'create' + 'Server(',
+  'call' + 'Tool(',
+];
 
 const WRITE_CAPABLE = [
   /method:\s*['"`](?:POST|PUT|PATCH|DELETE)['"`]/,
@@ -87,6 +94,10 @@ test('D-11: the check flags unguarded and late-guarded writers and passes a guar
       "await fetch(url, { method: 'DELETE' });",
     ].join('\n'),
     'read-only.js': "await fetch(url, { method: 'GET' });",
+    'late-guard-helper.js': [
+      `await ${'fetchWith' + 'FixedError('}url, { method: 'POST' });`,
+      `await ${GUARD_CALL});`,
+    ].join('\n'),
   };
   const offenses = Object.entries(planted)
     .map(([name, src]) => offenseIn(name, src))
@@ -94,6 +105,7 @@ test('D-11: the check flags unguarded and late-guarded writers and passes a guar
   assert.deepEqual(offenses, [
     '  unguarded.js: never calls the account guard',
     '  late-guard.js: calls fetch( before the account guard',
+    `  late-guard-helper.js: calls ${'fetchWith' + 'FixedError('} before the account guard`,
   ]);
 });
 
