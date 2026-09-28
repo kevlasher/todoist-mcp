@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { inspect } from 'node:util';
 import { verifyContractTestAccount } from '../test-contract/account-guard.js';
 
 /**
@@ -51,48 +52,67 @@ function leaks(text) {
   return text.includes(HEAD) || text.includes(TAIL);
 }
 
+// Message, stack, cause and any own property, as a person debugging would see it.
 function everythingIn(err) {
-  return [String(err?.message), String(err?.stack), String(err?.cause?.message), String(err?.cause)].join('\n');
+  return inspect(err, { depth: 5 });
 }
 
-async function withGuardEnv(token, fetchStub, fn) {
-  const saved = {
-    token: process.env.TODOIST_CONTRACT_TEST_TOKEN,
-    id: process.env.TODOIST_CONTRACT_TEST_ACCOUNT_ID,
-    fetch: globalThis.fetch,
-  };
-  process.env.TODOIST_CONTRACT_TEST_TOKEN = token;
-  process.env.TODOIST_CONTRACT_TEST_ACCOUNT_ID = ACCOUNT_ID;
+// Sets the two contract variables (undefined deletes one) and replaces fetch
+// for the length of fn, then puts all three back as they were.
+async function withGuardEnv(vars, fetchStub, fn) {
+  const keys = ['TODOIST_CONTRACT_TEST_TOKEN', 'TODOIST_CONTRACT_TEST_ACCOUNT_ID'];
+  const saved = keys.map((k) => process.env[k]);
+  const savedFetch = globalThis.fetch;
+  const setEnv = (k, v) => (v === undefined ? delete process.env[k] : (process.env[k] = v));
+  keys.forEach((k, i) => setEnv(k, [vars.token, vars.id][i]));
   globalThis.fetch = fetchStub;
   try {
     return await fn();
   } finally {
-    globalThis.fetch = saved.fetch;
-    for (const [k, v] of [
-      ['TODOIST_CONTRACT_TEST_TOKEN', saved.token],
-      ['TODOIST_CONTRACT_TEST_ACCOUNT_ID', saved.id],
-    ]) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
+    globalThis.fetch = savedFetch;
+    keys.forEach((k, i) => setEnv(k, saved[i]));
   }
 }
+
+// A fetch stub that validates the request as fetch does, records its
+// Authorization header, and answers GET /user with `body` and `status`.
+function userStub(sent, body = { id: ACCOUNT_ID, email: 'x@example.invalid' }, status = 200) {
+  return async (input, init) => {
+    const req = new Request(input, init);
+    sent.push(req.headers.get('authorization'));
+    return new Response(typeof body === 'string' ? body : JSON.stringify(body), { status });
+  };
+}
+
+// The error p rejects with; fails the test if p resolves.
+async function errorOf(p) {
+  let err;
+  await assert.rejects(p, (e) => {
+    err = e;
+    return true;
+  });
+  return err;
+}
+
+test('D-21: withGuardEnv restores the contract variables and fetch it replaced', async () => {
+  const realFetch = globalThis.fetch;
+  await withGuardEnv({ token: 'outer', id: 'outer-id' }, realFetch, async () => {
+    await withGuardEnv({ token: 'inner', id: undefined }, userStub([]), async () => {
+      assert.equal(process.env.TODOIST_CONTRACT_TEST_TOKEN, 'inner');
+      assert.equal('TODOIST_CONTRACT_TEST_ACCOUNT_ID' in process.env, false);
+    });
+    assert.equal(process.env.TODOIST_CONTRACT_TEST_TOKEN, 'outer');
+    assert.equal(process.env.TODOIST_CONTRACT_TEST_ACCOUNT_ID, 'outer-id');
+    assert.equal(globalThis.fetch, realFetch);
+  });
+});
 
 for (const [name, ch] of Object.entries(BAD_CHARACTERS)) {
   test(`D-21: the guard refuses a token containing ${name} with a fixed message and sends nothing`, async () => {
     const sent = [];
-    const stub = async (input, init) => {
-      new Request(input, init);
-      sent.push(String(input));
-      return new Response(JSON.stringify({ id: ACCOUNT_ID }), { status: 200 });
-    };
-    const err = await withGuardEnv(`${HEAD}${ch}${TAIL}`, stub, () =>
-      verifyContractTestAccount().then(
-        () => null,
-        (e) => e
-      )
+    const err = await withGuardEnv({ token: `${HEAD}${ch}${TAIL}`, id: ACCOUNT_ID }, userStub(sent), () =>
+      errorOf(verifyContractTestAccount())
     );
-    assert.ok(err instanceof Error, `the guard accepted a token containing ${name}`);
     assert.equal(err.message, BAD_TOKEN_MESSAGE);
     assert.equal(leaks(everythingIn(err)), false, 'the error carries part of the token');
     assert.deepEqual(sent, []);
@@ -102,15 +122,13 @@ for (const [name, ch] of Object.entries(BAD_CHARACTERS)) {
 // NUL is not in the list above because it cannot reach the guard, which
 // reads the token from process.env: an environment value ends at its first
 // NUL, and spawn refuses one. The guard's check rejects NUL anyway.
-test('D-21: a NUL cannot reach the guard through the environment', () => {
-  const saved = process.env.TODOIST_CONTRACT_TEST_TOKEN;
-  try {
-    process.env.TODOIST_CONTRACT_TEST_TOKEN = `${HEAD}\0${TAIL}`;
+test('D-21: a NUL cannot reach the guard through the environment', async () => {
+  const sent = [];
+  await withGuardEnv({ token: `${HEAD}\0${TAIL}`, id: ACCOUNT_ID }, userStub(sent), async () => {
     assert.equal(process.env.TODOIST_CONTRACT_TEST_TOKEN, HEAD);
-  } finally {
-    if (saved === undefined) delete process.env.TODOIST_CONTRACT_TEST_TOKEN;
-    else process.env.TODOIST_CONTRACT_TEST_TOKEN = saved;
-  }
+    await verifyContractTestAccount();
+  });
+  assert.deepEqual(sent, [`Bearer ${HEAD}`]);
   assert.throws(
     () => spawnSync(process.execPath, ['-e', ''], { env: { X: `${HEAD}\0${TAIL}` } }),
     { code: 'ERR_INVALID_ARG_VALUE' }
@@ -119,16 +137,59 @@ test('D-21: a NUL cannot reach the guard through the environment', () => {
 
 test('D-21: the guard still accepts a printable-ASCII token and checks the account', async () => {
   const sent = [];
-  const stub = async (input, init) => {
-    const req = new Request(input, init);
-    sent.push(req.headers.get('authorization'));
-    return new Response(JSON.stringify({ id: ACCOUNT_ID, email: 'x@example.invalid' }), { status: 200 });
-  };
   const token = `${HEAD} !~${TAIL}`;
-  const account = await withGuardEnv(token, stub, () => verifyContractTestAccount());
+  const account = await withGuardEnv({ token, id: ACCOUNT_ID }, userStub(sent), () => verifyContractTestAccount());
   assert.deepEqual(account, { id: ACCOUNT_ID, email: 'x@example.invalid' });
   assert.deepEqual(sent, [`Bearer ${token}`]);
 });
+
+// Every other refusal is fixed text too, apart from the mismatch, which
+// names the ids and email (D-21, still open). None carries the token.
+const REFUSALS = [
+  {
+    name: 'no account id set',
+    vars: { id: undefined },
+    stub: undefined,
+    message: 'TODOIST_CONTRACT_TEST_TOKEN and TODOIST_CONTRACT_TEST_ACCOUNT_ID must both be set.',
+    sends: 0,
+  },
+  {
+    name: 'a 401',
+    stub: [{ error: `bad token Bearer ${HEAD}${TAIL}` }, 401],
+    message: 'Contract test account check failed: status 401.',
+    sends: 1,
+  },
+  {
+    name: 'a body that is not JSON',
+    stub: [`<html>Bearer ${HEAD}${TAIL}</html>`],
+    message: 'Contract test account check failed: response was not valid JSON.',
+    sends: 1,
+  },
+  {
+    name: 'no usable id',
+    stub: [{ id: null, token: `${HEAD}${TAIL}` }],
+    message: 'Contract test account check failed: user response contained no usable id field.',
+    sends: 1,
+  },
+  {
+    name: 'another account',
+    stub: [{ id: 'other-7', email: 'o@example.invalid', token: `${HEAD}${TAIL}` }],
+    message: `Contract test account mismatch: expected id ${ACCOUNT_ID}, got id other-7 (email o@example.invalid).`,
+    sends: 1,
+  },
+];
+
+for (const r of REFUSALS) {
+  test(`D-21: the guard refuses ${r.name} with text that carries no part of the token`, async () => {
+    const sent = [];
+    const vars = { token: `${HEAD}${TAIL}`, id: ACCOUNT_ID, ...r.vars };
+    const stub = userStub(sent, ...(r.stub ?? []));
+    const err = await withGuardEnv(vars, stub, () => errorOf(verifyContractTestAccount()));
+    assert.equal(err.message, r.message);
+    assert.equal(leaks(everythingIn(err)), false, 'the error carries part of the token');
+    assert.equal(sent.length, r.sends);
+  });
+}
 
 test('D-21: an error thrown by the guard\'s fetch is rethrown with fixed text', async () => {
   const token = `${HEAD}${TAIL}`;
@@ -137,13 +198,7 @@ test('D-21: an error thrown by the guard\'s fetch is rethrown with fixed text', 
     e.cause = new Error(`cause also carries ${token}`);
     throw e;
   };
-  const err = await withGuardEnv(token, stub, () =>
-    verifyContractTestAccount().then(
-      () => null,
-      (e) => e
-    )
-  );
-  assert.ok(err instanceof Error, 'the guard did not fail');
+  const err = await withGuardEnv({ token, id: ACCOUNT_ID }, stub, () => errorOf(verifyContractTestAccount()));
   assert.equal(err.message, FETCH_FAILED_MESSAGE);
   assert.equal(err.cause, undefined);
   assert.equal(leaks(everythingIn(err)), false, 'the error carries part of the token');
@@ -307,25 +362,23 @@ function fetchViolations(files) {
       out.push(`${rel}:${lineOf(code, m.index)}: calls ${m[1]}( outside ${HELPER}`);
     }
   }
+  if (homes.length === 0) out.push(`${HELPER} is not defined in ${HELPER_HOME}`);
   if (homes.length > 1) out.push(`${HELPER} is defined ${homes.length} times: ${homes.join(', ')}`);
   return out;
 }
 
 function listJsFiles(dir) {
-  const out = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) out.push(...listJsFiles(full));
-    else if (entry.isFile() && entry.name.endsWith('.js')) out.push(full);
-  }
-  return out;
+  return fs
+    .readdirSync(dir, { recursive: true })
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => path.join(dir, f));
 }
 
 test('D-21 class check: flags every unwrapped fetch and every helper that can pass an error on', () => {
   const good = [
-    `export async function ${HELPER}(url, init, send = fetch) {`,
+    `export async function ${HELPER}(url, init) {`,
     '  try {',
-    '    return await send(url, init);',
+    '    return await fetch(url, init);',
     '  } catch {',
     "    throw new Error('fixed text');",
     '  }',
@@ -339,8 +392,9 @@ test('D-21 class check: flags every unwrapped fetch and every helper that can pa
     ['scripts/alias.js', 'const realFetch = globalThis.fetch;\nawait realFetch(u, o);'],
     ['scripts/call.js', 'await fetch.call(null, u, o);'],
     ['scripts/binding.js', good.replace('catch {', 'catch (err) {').replace("'fixed text'", 'err.message')],
-    ['scripts/template.js', good.replace("'fixed text'", '`failed: ${u}`')],
+    ['scripts/template.js', `${good.replace("'fixed text'", '`failed: ${u}`')}\nawait fetch(u);`],
     ['scripts/rethrow.js', good.replace("throw new Error('fixed text');", 'throw 1;')],
+    ['scripts/unterminated.js', `async function ${HELPER}(u) {\n  try {`],
   ];
   assert.deepEqual(fetchViolations(planted), [
     'scripts/direct.js:1: calls fetch( outside ' + HELPER,
@@ -351,9 +405,15 @@ test('D-21 class check: flags every unwrapped fetch and every helper that can pa
     `scripts/binding.js:1: ${HELPER} does not rethrow every error with a fixed string`,
     `scripts/template.js:1: defines ${HELPER} outside ${HELPER_HOME}`,
     `scripts/template.js:1: ${HELPER} does not rethrow every error with a fixed string`,
+    'scripts/template.js:8: calls fetch( outside ' + HELPER,
     `scripts/rethrow.js:1: defines ${HELPER} outside ${HELPER_HOME}`,
     `scripts/rethrow.js:1: ${HELPER} does not rethrow every error with a fixed string`,
-    `${HELPER} is defined 4 times: ${HELPER_HOME}:1, scripts/binding.js:1, scripts/template.js:1, scripts/rethrow.js:1`,
+    `scripts/unterminated.js:1: defines ${HELPER} outside ${HELPER_HOME}`,
+    `scripts/unterminated.js:1: ${HELPER} does not rethrow every error with a fixed string`,
+    `${HELPER} is defined 5 times: ${HELPER_HOME}:1, scripts/binding.js:1, scripts/template.js:1, scripts/rethrow.js:1, scripts/unterminated.js:1`,
+  ]);
+  assert.deepEqual(fetchViolations([['scripts/none.js', 'await run();']]), [
+    `${HELPER} is not defined in ${HELPER_HOME}`,
   ]);
 });
 
@@ -362,8 +422,5 @@ test('D-21 class: every request in test-contract/ and scripts/ rethrows its erro
     .flatMap((d) => listJsFiles(path.join(REPO_ROOT, d)))
     .map((f) => [path.relative(REPO_ROOT, f).split(path.sep).join('/'), fs.readFileSync(f, 'utf8')]);
   assert.ok(files.some(([rel]) => rel === HELPER_HOME), `fixture error: ${HELPER_HOME} not found`);
-  const violations = fetchViolations(files);
-  const defined = files.some(([rel, src]) => rel === HELPER_HOME && helperDefinitions(stripComments(src)).length === 1);
-  if (!defined) violations.push(`${HELPER} is not defined in ${HELPER_HOME}`);
-  assert.deepEqual(violations, []);
+  assert.deepEqual(fetchViolations(files), []);
 });

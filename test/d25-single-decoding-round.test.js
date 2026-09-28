@@ -124,12 +124,13 @@ function decodingViolations(files) {
 }
 
 function srcFiles(dir) {
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? srcFiles(path.join(dir, e.name)) : e.name.endsWith('.js') ? [path.join(dir, e.name)] : []
-  );
+  return fs
+    .readdirSync(dir, { recursive: true })
+    .filter((f) => f.endsWith('.js'))
+    .map((f) => path.join(dir, f));
 }
 
-test('D-25 class check: flags a chained decoder, a repeated or looped call, and a stray caller', () => {
+test('D-25 class check: flags a missing, chained, replace-free, self-calling or unterminated decoder, a repeated or looped call, and a stray caller', () => {
   const single = `function ${DECODER}(t) {\n  return t.replace(/&(amp|lt);/g, (m, n) => MAP[n]);\n}`;
   const chained = `function ${DECODER}(t) {\n  return t.replace(/&#(\\d+);/g, dec).replace(/&amp;/g, '&');\n}`;
   const all = `function ${DECODER}(t) {\n  return t.replaceAll('&amp;', '&');\n}`;
@@ -145,6 +146,10 @@ test('D-25 class check: flags a chained decoder, a repeated or looped call, and 
       ['sanitize.js', `${single}\n${strip(once)}`],
       ['shape.js', `export const f = (x) => ${DECODER}(x);`],
     ],
+    recursive: [['sanitize.js', `${single.replace('MAP[n]', `${DECODER}(m)`)}\n${strip(once)}`]],
+    unterminated: [['sanitize.js', `${strip(once)}\n${chained.slice(0, -2)}`]],
+    none: [['sanitize.js', `function ${DECODER}(t) {\n  return t;\n}\n${strip(once)}`]],
+    undefined: [['sanitize.js', strip(once)]],
   };
   const results = Object.fromEntries(Object.entries(planted).map(([k, v]) => [k, decodingViolations(v)]));
   assert.deepEqual(results, {
@@ -154,6 +159,10 @@ test('D-25 class check: flags a chained decoder, a repeated or looped call, and 
     twice: ['sanitize.js: stripMarkup calls ' + DECODER + ' 2 times, not once'],
     looped: [`sanitize.js:5: ${DECODER} called inside untilStable`],
     stray: [`shape.js:1: ${DECODER} called outside stripMarkup`],
+    recursive: [`sanitize.js: ${DECODER} calls itself`],
+    unterminated: [`sanitize.js: ${DECODER} makes 2 replace calls, not exactly one .replace(`],
+    none: [`sanitize.js: ${DECODER} makes 0 replace calls, not exactly one .replace(`],
+    undefined: [`${DECODER} is defined 0 times, not once`],
   });
 });
 
