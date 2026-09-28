@@ -21,7 +21,7 @@
  * the API echoing back `content` under step 5 can't be explained by the
  * request having sent `content` in the first place.
  */
-import { verifyContractTestAccount } from './account-guard.js';
+import { fetchWithFixedError, verifyContractTestAccount } from './account-guard.js';
 
 const API_BASE = 'https://api.todoist.com/api/v1';
 
@@ -57,7 +57,7 @@ async function main() {
 
   try {
     // Step 3: create a throwaway task.
-    const createRes = await fetch(`${API_BASE}/tasks`, {
+    const createRes = await fetchWithFixedError(`${API_BASE}/tasks`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ content: marker, priority: 1 }),
@@ -73,7 +73,7 @@ async function main() {
     console.log(`Created task ${taskId}`);
 
     // Step 4: send the verified body as the entire JSON body of the update.
-    const updateRes = await fetch(`${API_BASE}/tasks/${encodeURIComponent(taskId)}`, {
+    const updateRes = await fetchWithFixedError(`${API_BASE}/tasks/${encodeURIComponent(taskId)}`, {
       method: 'POST',
       headers,
       body: JSON.stringify(updateBody),
@@ -122,7 +122,7 @@ async function main() {
     // Step 7: cleanup always runs, even on assertion failure.
     if (taskId) {
       try {
-        const delRes = await fetch(`${API_BASE}/tasks/${encodeURIComponent(taskId)}`, {
+        const delRes = await fetchWithFixedError(`${API_BASE}/tasks/${encodeURIComponent(taskId)}`, {
           method: 'DELETE',
           headers,
         });
