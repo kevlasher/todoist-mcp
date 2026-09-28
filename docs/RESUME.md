@@ -13,9 +13,10 @@ the repository. Private deployment details are kept outside it.
 
 - Branch: work happens on a short-lived branch per cloud session, merged
   into `main` by pull request. `main` on `origin` is the source of truth.
-- Tests: 273/273 passing, under Node 20 (see section 6).
+- Tests: 344/344 passing, under Node 20 and Node 22 (see section 6).
 - All six findings in `docs/todoist-mcp-security-review.md` are closed.
-- Sessions 1 through 20 are complete; section 5 records Session 20.
+- Sessions 1 through 22 are complete; section 5 records Sessions 20
+  and 22. Session 21 is recorded in `docs/SPEC.md`'s decision log only.
 - The independent code review is done. It is dated 2026-09-24 and kept
   verbatim at `docs/reviews/2026-09-24-independent-code-review.md`. Its
   findings are recorded in `docs/SPEC.md` section 10 as D-6 through D-22.
@@ -24,11 +25,13 @@ the repository. Private deployment details are kept outside it.
   and implementation `1521d06` (section 5). D-13 through D-22 do not
   gate publication and stay open.
 - CI is done. `.github/workflows/test.yml` runs `npm ci` and `npm test`
-  under Node 20 on every push to `main` and every pull request, with
+  under Node 20 and Node 22 on every push to `main` and every pull
+  request, with
   `permissions: contents: read` only, both actions pinned to full commit
   SHAs, and no secrets. CodeQL and secret scanning are deliberately not
   in it: on a private repository they need GitHub's paid security
-  features and would fail on every run.
+  features and would fail on every run. CodeQL code scanning alerts #3,
+  #4 and #5 were triaged and fixed in Session 22 (section 5).
 - The second independent review is recorded, Session 20. It is dated
   2026-09-26 and kept verbatim at
   `docs/reviews/2026-09-26-independent-code-review.md`. Its one gating
@@ -99,7 +102,15 @@ The guard shows that an id matches, not that the account is disposable,
 so it is only as safe as the id it is given. That and the guard's and
 scripts' other gaps are recorded as D-21 in `docs/SPEC.md`.
 
-`npm test` runs none of them. It is `node --test test/` and is fully
+Since Session 22 the guard refuses a token containing any character
+outside printable ASCII before any request, and every request in
+`scripts/` and `test-contract/` goes through `fetchWithFixedError` in
+`test-contract/account-guard.js`, which replaces any error with fixed
+text, so a token cannot reach their output through an error message.
+`test/d21-token-header-error.test.js` fails on any other call of
+`fetch` in those folders.
+
+`npm test` runs none of them. It is `node --test test/*.test.js` and is fully
 offline. `test/live-smoke-date-account-guard.test.js` runs
 `scripts/live-smoke-date.js` with `fetch` stubbed, so no request leaves
 the machine.
@@ -191,6 +202,26 @@ Superseded on 2026-09-24: the independent code review found seven new
 defects that gate publication, D-6 through D-12 (see section 1). The
 paragraph beginning "Section 10 of `docs/SPEC.md` holds D-4" describes
 the state at the end of Session 10.
+
+**D-21 addition and D-25: done, Session 22.** Two CodeQL findings,
+fixed test-first (test-first `22e4be8`, implementation `397217c`,
+coverage restored `83c69a0`). Alerts #4 and #5: a contract token
+containing a line feed or carriage return made the account guard's
+`fetch` throw a header error quoting the whole token, and all three
+live paths printed it; `scripts/live-smoke-date.js`'s redaction stopped
+at the line break. NUL did not reproduce, because an environment value
+ends at its first NUL. The guard now refuses a token with any character
+outside printable ASCII, with a fixed message, before any request, and
+every request in `test-contract/` and `scripts/` rethrows its errors as
+fixed text through `fetchWithFixedError`. Recorded under D-21, which
+stays open for its other items. Alert #3, recorded as D-25, not gating:
+`decodeHtmlEntities` decoded its own output, so `&#38;lt;` and
+`&amp;lt;` came out differently and `&amp;quot;` decoded twice. It is
+now one `replace()` with one pattern and a callback, recorded under
+R10. Static checks cover both classes and were each proven red by
+mutation. `test-contract/account-guard.js` is now measured, at 100%.
+344 tests pass on Node 20 and Node 22. Next: publication preparation
+(section 1).
 
 **D-24: done, Session 20.** The second independent review, dated
 2026-09-26, is recorded verbatim in `docs/reviews/` (`76787c1`). The
@@ -446,13 +477,14 @@ assertion:
 A post-edit hook runs the full suite on any change to `src/` or `test/`.
 It does not fire on `docs/`.
 
-**Run the suite under Node 20.** Cloud sessions default to Node 22,
-where `npm test` (`node --test test/`) fails before loading any test,
-with `Cannot find module '.../test'`, because Node 22 treats the
-directory argument as a module path. The post-edit hook runs on that
-default, so in a cloud session it reports a failure after every edit to
-`src/` or `test/` whatever the tests would do: treat its output as a
-false failure. Run the suite with Node 20 first on `PATH` instead, for
-example `PATH=/opt/node20/bin:$PATH npm test`, until the tracked Node
-upgrade lands. Coverage baselines in `docs/SPEC.md` section 8 are also
+**Node versions.** Until Session 21, `npm test` was `node --test test/`,
+which Node 22 reads as a module path, so on Node 22 it failed with
+`Cannot find module '.../test'` before loading any test, and the
+post-edit hook's output in a cloud session was a false failure. Since
+Session 21 (`fd1b0d8`) it is `node --test test/*.test.js`, which runs the
+same tests on Node 20 and Node 22, and CI runs both. Cloud sessions
+default to Node 22, so the hook's output is now a real result. Measure
+coverage on Node 20, for example `PATH=/opt/node20/bin:$PATH node --test
+--experimental-test-coverage test/*.test.js`: Node 22 leaves test files
+out of the figures, so the baselines in `docs/SPEC.md` section 8 are
 Node 20 figures.
