@@ -35,6 +35,7 @@ Maintenance: one row per session, added when the session ends.
 | 19 | D-7 fixed: `buildResult`'s error branch passes the message through `safeField`, so it is redacted, stripped, defanged and fenced, then caps the whole with `capOutput` and prefixes `UNTRUSTED_NOTICE`; `isError` stays true. Decision recorded under R25; AD-4 amended so the notice is unconditional on error results too. The success path cut text before redacting it, the same bug class, and was fixed with it: `redactThenCut` in `src/redact.js` is the only code in `src/` that cuts text and redacts first, `safeField` redacts before stripping, and `buildResult` redacts last; recorded under R12. Test-first `37c29b6`, implementation `1521d06`. `test/d7-error-result.test.js` checks D-7's reproduction input as an exact string, every tool in `tools/list` and three other error sources, a token cut by each cap on both paths, and a static check that found `src/sanitize.js`'s two caps, its unredacted `stripMarkup` call and `src/client.js`'s correctly ordered but separate cut. Errors the MCP SDK returns before a handler runs recorded as D-7's known limit. Invariants 1, 2 and 4 restored to HOLDS for every result `buildResult` builds, and qualified with that limit, as are 3 and 12. `README.md`'s "No open defect affects tool output" reworded, since D-13 to D-17 do. D-7 left section 10; no defect gating publication remains. Coverage recorded for `1521d06`. | Sections 4, 5, 7, 8, 10 |
 | 20 | Second independent code review, dated 2026-09-26, recorded verbatim in `docs/reviews/`. The reviewer was given `src/` and `test/` only; `scripts/`, `package.json` and the lockfile were missing by mistake, so it ran 63 tests. Its markup-split token fragment reproduced against `7286195` and recorded as D-24, gating publication: the HTTP error body's 500-character cut runs before stripping, so a registered token split by markup comes back as a 28-character fragment redaction no longer recognizes. That makes R12's Session 19 decision, `README.md`'s token-redaction claim and Invariant 10 false; Invariant 10 marked VIOLATED. The review's other new findings added to D-13, D-14, D-16, D-17, D-19 and D-22; `"5junk"` and an unsafe integer as numeric settings, and a `Bearer` credential containing `:`, reproduced. R10's out-of-scope URL forms extended to `https:evil.example/x`, `//evil.example/x` and `mailto:leak@evil.example`. D-24 then fixed: `request()` in `src/client.js` no longer cuts an error body, so no text is cut before it has been redacted, stripped and redacted again; no bound was kept, since `TODOIST_MAX_FIELD_CHARS` has no upper limit (D-14). Decision recorded under R12, R16 amended, AD-4's amendment corrected. Test-first `926c798`, static-check fix `63e41d9`, implementation `d0ae2e5`. `test/d24-markup-split-token.test.js` places a markup-split token at every cut point on both paths, at every position inside it, with exact outputs; the four error-path tests failed against `7286195`'s code, and the two success-path tests passed before the fix, since that path never had the cut. Its static check for the bug class, text cut before it is stripped, flagged `src/client.js`'s cut and nothing else, and went red on five mutations of `src/`; one of them, `capOutput`'s result stripped through a variable, was missed at first and fixed in `63e41d9`. `926c798`'s message says 266 pass and 7 fail; the true figure at that commit is 267 and 6. Invariant 10 restored to HOLDS. D-24 left section 10; no defect gating publication remains. Coverage recorded for `d0ae2e5`. | Sections 4, 5, 7, 8, 10 |
 | 21 | Final pre-publication read of `README.md` against the code and this spec. `npm test` ran no tests on Node 22: `node --test test/` passes a directory, which Node 22 reads as a file path. The script now passes `test/*.test.js`; Node 20.20.2 and 22.22.2 run the same 273 tests, and CI runs both (`fd1b0d8`). Two findings fixed test-first. The server announced version 1.0.0 against `package.json`'s 0.1.0; recorded as R31, with `package-lock.json`'s stale 1.0.0 found by the same class check (test-first `6bd3b24` and `3c32872`, implementation `33b3439` and `8643ae8`). The `today` preset of `find-tasks-by-date` sends `today | overdue` and its description did not say so; recorded under R22 (test-first `6bd3b24`, implementation `33b3439`). Setext headings reproduced and recorded under D-15. Section 3's partial-batch non-goal widened from four write tools to all nine. MIT license added (`1795b4c`). `README.md` corrected against the code and this spec, with the claims D-13, D-15, D-17 and D-21 made false now stated as limits; `SECURITY.md` added. Em dashes replaced in every tracked file except the verbatim records (`docs/reviews/`, `docs/behavior-inventory.md`, `docs/todoist-mcp-security-review.md`); the test titles section 5 quotes were renamed with their quotes. Coverage recorded for `8643ae8`. | Sections 3, 5, 7, 8, 9, 10 |
+| 22 | Two CodeQL findings fixed test-first. Alerts #4 and #5, added to D-21: a contract token containing CR or LF made the account guard's `fetch` throw a header error quoting the whole token, which the live paths printed; `scripts/live-smoke-date.js`'s redaction stopped at the line break. NUL did not reproduce, because an environment value ends at its first NUL. The guard now refuses a token with any character outside printable ASCII, with a fixed message, before any request, and every request in `test-contract/` and `scripts/` goes through `fetchWithFixedError`, which rethrows any error as fixed text. Alert #3, recorded as D-25 and not gating: `decodeHtmlEntities` decoded its own output, so `&#38;lt;` and `&amp;lt;` differed and `&amp;quot;` decoded twice; it is now one `replace()` with one pattern and a callback. Decision recorded under R10. Test-first `22e4be8`, implementation `397217c`, coverage restored `83c69a0`. Static checks: every `fetch` in those folders goes through the helper, whose catch binds nothing and throws a literal; `decodeHtmlEntities` makes exactly one `replace()` call and runs once per `stripMarkup`. D-21 stays open for its other items; D-25 left section 10. `test-contract/account-guard.js` is now measured. Coverage recorded for `83c69a0`. | Sections 7, 8, 10 |
 
 ## 1. Purpose
 
@@ -727,6 +728,21 @@ judgment.
   A numeric reference cannot reach this pass today: the markup-character
   pass spaces out every `#`. The break covers numeric references anyway,
   so the property does not rest on that pass.
+
+  **DECIDED, Session 22 (D-25).** Entities are decoded in one round.
+  `decodeHtmlEntities` is a single `replace()` whose one pattern matches a
+  hex numeric, decimal numeric or one of the five named references, and
+  whose callback decodes the match, so no scan sees its own output.
+  `&#38;lt;`, `&#x26;lt;` and `&amp;lt;` all decode to `&lt;`, which the
+  character-reference break turns into `[&]lt;`, and `&amp;quot;` decodes to
+  `&quot;`, not `"`. `stripMarkup` calls it once, before any other pass and
+  outside the group that repeats until stable. Evidence:
+  `test/d25-single-decoding-round.test.js`, whose exact-output tests cover
+  the `&amp;`, `&#38;`, `&#038;`, `&#x26;`, `&#X26;` and `&#x0026;` forms of
+  six inputs, and whose static check requires exactly one `.replace(` and
+  no `replaceAll` in `decodeHtmlEntities`, no call to itself, and one call
+  to it, from `stripMarkup`, outside `untilStable`. It went red with the
+  decoder rebuilt as a chain and with `stripMarkup` decoding twice.
 - R11. `safeField` must return unframed empty string for empty/whitespace-
   only/markup-only input, must neutralize literal fence-marker strings found
   inside the value (preventing forged fence boundaries), and must truncate
@@ -1352,6 +1368,34 @@ and optional chaining that never short-circuits and a push that only runs
 on failure were never taken. The tests were tightened, and each detector
 now also runs on a planted offender.
 
+Session 22, at commit `83c69a0` (D-21 addition and D-25 fix), measured
+on Node v20.20.2 with `node --test --experimental-test-coverage
+test/*.test.js`:
+
+| | Lines | Branches | Functions |
+|---|---|---|---|
+| All files | 99.41% | 95.08% | 98.54% |
+
+All three figures are above the `8643ae8` row, which `b143f82` matched
+(99.35% / 94.59% / 98.40%), and no file present at `b143f82` lost
+coverage. `src/sanitize.js` branches rose from 91.18% to 91.89%. The two
+new test files are at 100.00% on all three. `test-contract/account-guard.js`
+is measured for the first time, also at 100.00% on all three:
+`test/d21-token-header-error.test.js` imports it in-process, so it enters
+the figures as any file a test loads does. It is not run as a child
+process, which the note below keeps out of these figures. The test-first
+commit `22e4be8` measured 99.05% / 93.92% / 97.93%. The implementation
+commit `397217c` measured 99.09% / 93.82% / 97.93%, below `b143f82`: the
+guard entered at 81.61% / 64.71% with its refusal paths never run, the
+two new test files had fallbacks no input took, and
+`test/d6-url-defang-order.test.js` fell from 95.35% to 95.33% branches.
+That last drop is V8 reporting two blocks in `classifyReplace` merged
+into their parent once no source in `src/` decoded an entity with a string
+replacement; every line still ran. `83c69a0` fixed each: tests of every
+guard refusal, planted sources for each detector path, including a
+string-replacement and a `decodeCodePoint` decode for the D-6 check, and
+the fallbacks with no job removed. Node 22.22.2 runs the same 344 tests.
+
 Test command. Until Session 21, `npm test` was `node --test test/`. Node
 20 searches a directory argument for test files; Node 22 reads it as a
 file path, so on Node 22.22.2 the command failed with `Cannot find module
@@ -1532,6 +1576,8 @@ exact input and output given; **by reading** means established from the
 code only; **review only** means taken from the review and not checked
 again. D-23 did not come from the review: it was found in Session 17
 while fixing D-6, recorded under D-15, and split out in Session 18.
+D-25 did not either: it is CodeQL code scanning alert #3, recorded in
+Session 22 with the addition to D-21 from alerts #4 and #5.
 
 **D-24, and additions marked "second review".** These come from a second
 independent code review dated 2026-09-26, kept verbatim at
@@ -1550,7 +1596,8 @@ gates publication and was fixed in Session 20. D-13 through D-22 do not
 gate publication and remain open. Several of them affect tool output (D-13,
 D-14, D-15, D-16, D-17 and D-18), so `README.md` no longer says that no open
 defect does. D-18 was added to that list in Session 21: `find-tasks-by-date`
-returns the caller's `date` unframed in its `filter` field.
+returns the caller's `date` unframed in its `filter` field. D-25, from
+CodeQL, does not gate publication and was fixed in Session 22.
 
 ### D-1
 
@@ -1911,7 +1958,8 @@ under R3/R4, and make the comment match what the code does.
   `test-contract/update-task-partial.contract.js` send the contract token
   without `redirect: 'manual'`. AD-3 covers only `src/client.js`.
 - The guard's mismatch error embeds `id` and `email` from the response
-  unsanitized, and a `fetch` failure propagates without redaction.
+  unsanitized. A `fetch` failure propagated without redaction; fixed in
+  Session 22 (below).
 - `scripts/live-smoke.js` prints the read-back and completion results
   without asserting success, so it can print its success conclusion over
   tool errors.
@@ -1924,10 +1972,71 @@ under R3/R4, and make the comment match what the code does.
   through `/tasks/filter`. It prints the recorded paths and does not
   assert them.
 
+**CodeQL alerts #4 and #5, Session 22.** Reproduced against `b143f82` on
+2026-09-28 under Node 20.20.2 and 22.22.2, with `fetch` replaced by a stub
+that builds a `Request`, which validates headers as `fetch` does, and
+sends nothing. With `TODOIST_CONTRACT_TEST_TOKEN` set to `SECRETTOKENabc`,
+a line feed and `def`, the guard threw `Headers.append: "Bearer
+SECRETTOKENabc` / `def" is an invalid header value.`, the whole token
+quoted across the line break, and every live path printed it:
+
+- `scripts/live-smoke.js`: `Live smoke test FAILED: ` and the message as
+  it was.
+- `scripts/live-smoke-date.js`: `Live date smoke test FAILED to run:
+  Headers.append: "Bearer [REDACTED]` / `def" is an invalid header
+  value.` Redaction's `Bearer` pattern stops at the line break, so the
+  part after it printed.
+- `test-contract/update-task-partial.contract.js`: `FAIL: ` and the
+  message as it was.
+
+A carriage return gave the same message with `\r`. A character above
+U+00FF, such as U+2028, gave `Cannot convert argument to a ByteString
+because the character at index 33 has a value of 8232 which is greater
+than 255.`, which names a position, not the token. NUL did not
+reproduce: an environment value ends at its first NUL, so `process.env`
+held `SECRETTOKENabc`, which the guard sent as an ordinary token, and
+`spawn` refuses an environment value containing NUL with
+`ERR_INVALID_ARG_VALUE`. Any other error one of these requests threw,
+such as a network error that quotes the request, also reached the
+output as it was.
+
+Fixed in Session 22. The guard refuses a token containing any character
+outside printable ASCII, 0x20 to 0x7E, with the fixed message
+`TODOIST_CONTRACT_TEST_TOKEN contains a character outside printable
+ASCII; refusing to send it.` before any request; the check covers NUL
+although NUL cannot arrive. Every request in `test-contract/` and
+`scripts/` goes through `fetchWithFixedError` in
+`test-contract/account-guard.js`: the guard's own request, the contract
+test's three task requests, and `scripts/live-smoke-date.js`'s request
+recorder, which passes it the original `fetch`. Its catch binds nothing
+and throws `Request to Todoist failed before a response arrived; the
+error is withheld because it can contain the token.` Test-first
+`22e4be8`, implementation `397217c`, coverage restored `83c69a0`.
+Evidence: `test/d21-token-header-error.test.js` runs the guard with LF,
+CR, CRLF, tab, DEL, U+00E9 and U+2028 in the token, runs both live
+scripts and the contract test with an LF token as child processes with
+`fetch` stubbed, and requires the fixed message, no part of the token
+and no request; it runs every other guard refusal and requires its
+exact message without the token. Its static check fails on a call of
+`fetch` in either folder outside the helper, bare, through
+`globalThis`, through `.call`, `.apply` or `.bind`, or through a name
+assigned from it, and on the helper defined anywhere but
+`test-contract/account-guard.js`, more than once, or with any body but
+a `try` whose catch binds nothing and throws a string literal. It went
+red with a contract request calling `fetch` directly, with the recorder
+calling the original `fetch` directly, with the helper's catch binding
+the error into its message, and with the guard calling `fetch`
+directly. `test/live-write-paths-guarded.test.js` now counts the helper
+as a request, and went red with a helper request placed before the
+guard.
+
 **Fix criteria:** the guard and every contract fetch refuse redirects and
 redact what they throw. The smoke scripts assert what they print and exit
 non-zero on failure. `stdio-check.js` asserts the expected tool set for
 its mode. The disposable-account assumption is written into section 9.
+Session 22 met the second half of the first criterion: every request in
+`test-contract/` and `scripts/` replaces what it throws with fixed text.
+None refuses redirects yet.
 
 ### D-22: Test assertions that a regression would still satisfy
 
@@ -2059,3 +2168,24 @@ removing that cut, so no text is cut before it has been redacted,
 stripped and redacted again; see section 7, R12 and R16. Test-first
 `926c798`, static-check fix `63e41d9`, implementation `d0ae2e5`. This
 number is retired, not reused.
+
+### D-25
+
+CodeQL code scanning alert #3, reproduced in Session 22 against
+`b143f82` under Node 20.20.2 and 22.22.2. `decodeHtmlEntities` decoded
+hex and decimal numeric entities in two `replace()` calls and the five
+named entities in five more, so a later call decoded what an earlier one
+produced. `stripMarkup('&#38;lt;')` and `stripMarkup('&#x26;lt;')`
+returned an empty string, because `&#38;` became `&`, then `&lt;` became
+`<`, which was spaced out and trimmed, while `stripMarkup('&amp;lt;')`
+returned `[&]lt;`. `&#38;lt;!-- x --&#38;gt;` was removed as a comment
+while `&amp;lt;!-- x --&amp;gt;` came back as `[&]lt;!-- x --[&]gt;`.
+`&amp;quot;` and `&amp;apos;` decoded twice even in the `&amp;` form,
+because `&amp;` ran before `&quot;` and `&apos;`: `say &amp;quot;hi&amp;quot;`
+came back as `say "hi"`. That contradicted R10, which treats `&amp;lt;` as
+what one decoding round leaves. Security-neutral: in every case the
+decoded text was then removed or neutralized, and a surviving reference
+was broken by the D-23 pass. It did not gate publication. Fixed in
+Session 22 by making the decoder one `replace()` with one pattern and a
+callback; see section 7, R10. Test-first `22e4be8`, implementation
+`397217c`. This number is retired, not reused.

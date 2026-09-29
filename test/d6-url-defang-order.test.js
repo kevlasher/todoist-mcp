@@ -507,6 +507,22 @@ test('D-6 class check: reports a character-class pass before a reveal, anywhere 
   ]);
 });
 
+// Since D-25 decodeHtmlEntities makes one replace() with a callback, so no
+// source in src/ decodes an entity with a string replacement any more; the
+// check must still treat one as a reveal, and a decodeCodePoint callback too.
+test('D-6 class check: an entity decoded by a string replacement or a decodeCodePoint callback is a reveal', () => {
+  const planted = `function helper(s) {
+    s = s.replace(/[<>]/g, ' ');
+    s = s.replace(/&#(\\d+);/g, (_, d) => decodeCodePoint(d, 10));
+    return s.replace(/&lt;/g, '<');
+  }`;
+  const v = orderingViolations(planted, 'planted.js');
+  assert.deepEqual(v, [
+    'helper: planted.js:2 replace(/[<>]/) runs before planted.js:3 replace(/&#(\\d+);/), which can reveal text',
+    'helper: planted.js:2 replace(/[<>]/) runs before planted.js:4 replace(/&lt;/), which can reveal text',
+  ]);
+});
+
 test('D-6 class check: fails closed on an unknown call in stripMarkup, an opaque replacement, and a rewrite outside a function', () => {
   const planted = `const x = 'a'.replace(/a/g, 'b');
   export function stripMarkup(input) {

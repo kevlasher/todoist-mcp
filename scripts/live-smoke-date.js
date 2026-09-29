@@ -25,7 +25,7 @@
  * globalThis.fetch (the same seam the offline tests use), passing every logged
  * URL through the project's existing redaction path so the token can't leak.
  */
-import { verifyContractTestAccount } from '../test-contract/account-guard.js';
+import { fetchWithFixedError, verifyContractTestAccount } from '../test-contract/account-guard.js';
 import { loadConfig } from '../src/config.js';
 import { createServer } from '../src/server.js';
 import { registerSecret, redact } from '../src/redact.js';
@@ -77,13 +77,14 @@ async function main() {
   // ---- wire-level request recorder (redacted) -----------------------------
   // Wraps global fetch WITHOUT touching src/. Records the real URL, method and
   // status of every outbound call so we can show definitively which endpoint
-  // each filter hits.
+  // each filter hits. The real call goes through fetchWithFixedError, so an
+  // error that quotes the token never reaches the output (D-21).
   const wire = [];
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, opts = {}) => {
     const rec = { method: opts.method ?? 'GET', url: redact(String(url)), status: null };
     wire.push(rec);
-    const res = await realFetch(url, opts);
+    const res = await fetchWithFixedError(url, opts, realFetch);
     rec.status = res.status;
     return res;
   };

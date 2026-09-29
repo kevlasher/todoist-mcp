@@ -35,23 +35,29 @@ function decodeCodePoint(digits, radix) {
   return String.fromCodePoint(cp);
 }
 
+const NAMED_ENTITIES = { lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" };
+
 /**
- * Decode HTML entities, numeric (decimal and hex) first and then the five
- * common named ones, in a single pass. stripMarkup runs this before any other
- * pass, so an entity-encoded comment, tag or URL scheme (e.g.
- * `&lt;!-- x --&gt;`, `&#60;script&#62;`, `http&#58;//`) is removed or
- * defanged exactly like its literal form, rather than surviving as
- * inert-looking text that a downstream renderer could decode (D-15).
+ * Decode HTML entities, numeric (decimal and hex) and the five common named
+ * ones, in one scan. stripMarkup runs this before any other pass, so an
+ * entity-encoded comment, tag or URL scheme (e.g. `&lt;!-- x --&gt;`,
+ * `&#60;script&#62;`, `http&#58;//`) is removed or defanged exactly like its
+ * literal form, rather than surviving as inert-looking text that a
+ * downstream renderer could decode (D-15).
+ *
+ * One replace() with one pattern, so no entity is decoded from another's
+ * output: `&#38;lt;`, `&amp;lt;` and `&amp;quot;` each decode one round,
+ * to `&lt;` and `&quot;` (R10, D-25). A chain of replace() calls decoded
+ * `&` and then decoded again what it produced.
  */
 function decodeHtmlEntities(text) {
-  return text
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => decodeCodePoint(hex, 16))
-    .replace(/&#(\d+);/g, (_, dec) => decodeCodePoint(dec, 10))
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&apos;/gi, "'");
+  return text.replace(/&(?:#x([0-9a-f]+)|#(\d+)|(lt|gt|amp|quot|apos));/gi, (_, hex, dec, name) =>
+    hex !== undefined
+      ? decodeCodePoint(hex, 16)
+      : dec !== undefined
+        ? decodeCodePoint(dec, 10)
+        : NAMED_ENTITIES[name.toLowerCase()]
+  );
 }
 
 /**
